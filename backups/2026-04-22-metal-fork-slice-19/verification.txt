@@ -1,0 +1,10 @@
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_launch_probe.py
+NATIVE_LAUNCH_READY ... pf.render.backend=METAL
+./bin/pf-arm64 ./ ./scripts/rts/main.py
+screencapture -x /tmp/pf_metal_textured_terrain_live.png
+live screenshot: backups/2026-04-22-metal-fork-slice-19/pf_metal_textured_terrain_live.png
+osascript -e do shell script "kill -9 $(pgrep -n pf-arm64)"
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+./bin/pf-arm64 ./ ./scripts/macos/pf_native_launch_probe.py
+NATIVE_LAUNCH_READY ... pf.render.backend=OPENGL

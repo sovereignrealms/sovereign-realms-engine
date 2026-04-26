@@ -1,0 +1,3 @@
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+./bin/pf-arm64 ./ /tmp/pf_metal_water_probe.py
+Result: live Metal screenshot shows visible water areas on real water tiles; screenshot saved as pf_metal_water_live.png

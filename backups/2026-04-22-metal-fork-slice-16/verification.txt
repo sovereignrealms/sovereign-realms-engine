@@ -1,0 +1,1 @@
+NATIVE_SESSION_RESTORED objs=388 regions=1 cameras=1 region_names=native_ui_session_probe_region camera_names=native_ui_session_probe_camera

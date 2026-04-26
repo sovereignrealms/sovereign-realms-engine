@@ -1,0 +1,3 @@
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_launch_probe.py -> NATIVE_LAUNCH_READY ... pf.video.use_batch_rendering=True pf.render.backend=METAL
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_gameplay_smoke_probe.py -> METAL_GAMEPLAY_SMOKE_PASS backend=METAL camera=1 selection=1 move=1 pause=1 attack=1

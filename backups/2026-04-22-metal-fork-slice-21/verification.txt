@@ -1,0 +1,3 @@
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_launch_probe.py -> NATIVE_LAUNCH_READY ... pf.render.backend=METAL
+sips -g hasAlpha assets/models/pine_tree/pino.png assets/models/shrub/planta.png assets/models/fern/fern_leaf.png assets/models/bushes/plants_grass_006_col.png assets/models/bushes/prop_plants_furn.png -> all reported hasAlpha: yes

@@ -1,0 +1,151 @@
+#
+#  This file is part of Permafrost Engine. 
+#  Copyright (C) 2018-2023 Eduard Permyakov 
+#
+#  Permafrost Engine is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  Permafrost Engine is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# 
+#  Linking this software statically or dynamically with other modules is making 
+#  a combined work based on this software. Thus, the terms and conditions of 
+#  the GNU General Public License cover the whole combination. 
+#  
+#  As a special exception, the copyright holders of Permafrost Engine give 
+#  you permission to link Permafrost Engine with independent modules to produce 
+#  an executable, regardless of the license terms of these independent 
+#  modules, and to copy and distribute the resulting executable under 
+#  terms of your choice, provided that you also meet, for each linked 
+#  independent module, the terms and conditions of the license of that 
+#  module. An independent module is a module which is not derived from 
+#  or based on Permafrost Engine. If you modify Permafrost Engine, you may 
+#  extend this exception to your version of Permafrost Engine, but you are not 
+#  obliged to do so. If you do not wish to do so, delete this exception 
+#  statement from your version.
+#
+
+import os
+import pf
+import hfmp_s2.globals
+import hfmp_s2.factions
+
+import views.demo_window as dw
+import views.action_pad_window as apw
+
+import view_controllers.action_pad_vc as apvc
+import view_controllers.demo_vc as dvc
+
+from constants import *
+from units import *
+
+main_cam = None
+debug_cam = None
+active_cam = None
+demo_vc = None
+action_pad_vc = None
+
+def toggle_camera(user, event):
+
+    if event[0] == pf.SDL_SCANCODE_C and not pf.ui_text_edit_has_focus():
+        global active_cam, main_cam, debug_cam
+        if active_cam == main_cam:
+            active_cam = debug_cam
+        else:
+            active_cam = main_cam
+        pf.set_active_camera(active_cam)
+
+def toggle_pause(user, event):
+
+    if event[0] == pf.SDL_SCANCODE_P and not pf.ui_text_edit_has_focus():
+        ss = pf.get_simstate()
+        if ss == pf.G_RUNNING:
+            pf.set_simstate(pf.G_PAUSED_UI_RUNNING)
+        else:
+            pf.set_simstate(pf.G_RUNNING)
+
+def configure_game_environment():
+    pf.set_ambient_light_color((1.0, 1.0, 1.0))
+    pf.set_emit_light_color((1.0, 1.0, 1.0))
+    pf.set_emit_light_pos((1664.0, 1024.0, 384.0))
+    pf.set_active_font("OptimusPrinceps.ttf")
+
+def load_prototype_scene():
+    pf.load_map("assets/maps", "demo.pfmap")
+    (hfmp_s2.globals.scene_objs,
+     hfmp_s2.globals.scene_regions,
+     hfmp_s2.globals.scene_cameras) = pf.load_scene("assets/maps/demo.pfscene")
+    hfmp_s2.factions.apply()
+    pf.set_skybox("assets/skyboxes/clouds_blue", "jpg")
+
+    pf.set_diplomacy_state(1, 2, pf.DIPLOMACY_STATE_WAR)
+    pf.set_diplomacy_state(1, 3, pf.DIPLOMACY_STATE_WAR)
+    pf.set_diplomacy_state(2, 3, pf.DIPLOMACY_STATE_WAR)
+
+    pf.set_faction_controllable(0, False)
+    pf.set_faction_controllable(2, False)
+    pf.set_faction_controllable(3, False)
+
+def bootstrap_game_runtime():
+    global main_cam, debug_cam, active_cam, demo_vc, action_pad_vc
+
+    main_cam = pf.get_active_camera()
+    debug_cam = pf.Camera(mode=pf.CAM_MODE_FPS, position=(0.0, 175.0, 0.0), pitch=-65.0, yaw=135.0)
+    active_cam = main_cam
+
+    pf.register_ui_event_handler(pf.SDL_KEYDOWN, toggle_camera, None)
+    pf.register_ui_event_handler(pf.SDL_KEYDOWN, toggle_pause, None)
+
+    demo_vc = dvc.DemoVC(dw.DemoWindow())
+    demo_vc.activate()
+
+    action_pad_vc = apvc.ActionPadVC(apw.ActionPadWindow())
+    action_pad_vc.activate()
+
+def restore_runtime_after_session_load(scene_objs=None, scene_regions=None, scene_cameras=None):
+    if scene_objs is not None:
+        hfmp_s2.globals.scene_objs = scene_objs
+    if scene_regions is not None:
+        hfmp_s2.globals.scene_regions = scene_regions
+    if scene_cameras is not None:
+        hfmp_s2.globals.scene_cameras = scene_cameras
+    bootstrap_game_runtime()
+
+    if os.environ.get("PF_NATIVE_SESSION_PROBE") == "1":
+        marker = "NATIVE_SESSION_RESTORED objs={0} regions={1} cameras={2}".format(
+            len(hfmp_s2.globals.scene_objs),
+            len(hfmp_s2.globals.scene_regions),
+            len(hfmp_s2.globals.scene_cameras),
+        )
+        if os.environ.get("PF_NATIVE_SESSION_PROBE_VERBOSE") == "1":
+            region_names = ",".join(region.name for region in hfmp_s2.globals.scene_regions)
+            camera_names = ",".join(
+                (camera.name or "None") for camera in hfmp_s2.globals.scene_cameras
+            )
+            marker = "{0} region_names={1} camera_names={2}".format(
+                marker,
+                region_names,
+                camera_names,
+            )
+        print(marker)
+        probe_path = os.environ.get("PF_NATIVE_SESSION_PROBE_PATH")
+        if probe_path:
+            with open(probe_path, "w") as probe_file:
+                probe_file.write(marker + "\n")
+        if os.environ.get("PF_NATIVE_SESSION_PROBE_AUTOQUIT") == "1":
+            pf.global_event(pf.SDL_QUIT, None)
+
+def main():
+    configure_game_environment()
+    load_prototype_scene()
+    bootstrap_game_runtime()
+
+if __name__ == "__main__":
+    main()
