@@ -34,6 +34,7 @@
 
 import os
 import sys
+import json
 import pf
 import rts.globals
 import rts.time_of_day as time_of_day
@@ -185,6 +186,39 @@ def restore_runtime_after_session_load(scene_objs=None, scene_regions=None, scen
     if scene_cameras is not None:
         rts.globals.scene_cameras = scene_cameras
     bootstrap_demo_runtime()
+
+    large_world_marker_path = os.environ.get("PF_LARGE_WORLD_SOAK_RESTORE_MARKER")
+    large_world_summary_path = os.environ.get("PF_LARGE_WORLD_SOAK_RESTORE_SUMMARY")
+    if large_world_marker_path or large_world_summary_path:
+        marker = "LARGE_WORLD_SOAK_RESTORE_PASS objs={0} regions={1} cameras={2}".format(
+            len(rts.globals.scene_objs),
+            len(rts.globals.scene_regions),
+            len(rts.globals.scene_cameras),
+        )
+        if large_world_marker_path:
+            with open(large_world_marker_path, "w") as marker_file:
+                marker_file.write(marker + "\n")
+        if large_world_summary_path:
+            try:
+                with open(large_world_summary_path, "r") as summary_file:
+                    payload = json.load(summary_file)
+            except (IOError, ValueError):
+                payload = {}
+            checks = payload.setdefault("checks", {})
+            checks["session_restore"] = True
+            payload["status"] = "pass"
+            session = payload.setdefault("session", {})
+            session["restore_object_count"] = len(rts.globals.scene_objs)
+            session["restore_region_count"] = len(rts.globals.scene_regions)
+            session["restore_camera_count"] = len(rts.globals.scene_cameras)
+            session["restore_marker"] = marker
+            with open(large_world_summary_path, "w") as summary_file:
+                json.dump(payload, summary_file, indent=2, sort_keys=True)
+                summary_file.write("\n")
+        print(marker)
+        sys.stdout.flush()
+        if os.environ.get("PF_LARGE_WORLD_SOAK_RESTORE_AUTOQUIT") == "1":
+            os._exit(0)
 
     if os.environ.get("PF_NATIVE_SESSION_PROBE") == "1":
         marker = "NATIVE_SESSION_RESTORED objs={0} regions={1} cameras={2}".format(

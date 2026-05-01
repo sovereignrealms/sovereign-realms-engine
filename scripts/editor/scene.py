@@ -654,6 +654,23 @@ def _meta_dict_for_path(path):
             return dict
     return None
 
+def _meta_dict_for_object(obj, path):
+    meta = _safe_getattr(obj, "session_scene_meta")
+    if callable(meta):
+        meta = meta()
+
+    base = _meta_dict_for_path(path)
+    if meta is None:
+        return base
+
+    ret = {}
+    if base is not None:
+        ret.update(base)
+    ret.update(meta)
+    if "path" not in ret:
+        ret["path"] = path
+    return ret
+
 def _write_constructor_args(scenefile, construct_args):
     scenefile.write("   constructor_arguments int {0}\n".format(len(construct_args)))
     for arg in construct_args:
@@ -744,7 +761,7 @@ def _write_scene_to_stream(scenefile, objects_list, factions_list=None, regions_
         if pfobj_path.startswith(MODELS_PREFIX_DIR):
             pfobj_path = pfobj_path[len(MODELS_PREFIX_DIR):]
 
-        meta_dict = _meta_dict_for_path(pfobj_path)
+        meta_dict = _meta_dict_for_object(obj, pfobj_path)
         if meta_dict is None:
             raise ValueError("Unable to find scene metadata for '{0}'".format(obj.pfobj_path))
 

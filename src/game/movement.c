@@ -4091,7 +4091,7 @@ void G_Move_AddEntity(uint32_t uid, vec3_t pos, float sel_radius, int faction_id
         },
         .args[3] = (struct attr){
             .type = TYPE_INT,
-            .val.as_float = faction_id
+            .val.as_int = faction_id
         }
     });
 }

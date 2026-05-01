@@ -13,6 +13,13 @@ import rts.main as demo_main
 from rts.units.goblin import Goblin
 from rts.units.knight import Knight
 from rts.units.mage import Mage
+from rts.units.probe import (
+    ProbeBuildable,
+    ProbeGarrisonable,
+    ProbeResource,
+    ProbeStorage,
+    ProbeWorker,
+)
 
 
 PROBE_PATH = "/tmp/pf_metal_large_world_soak_probe.txt"
@@ -45,27 +52,6 @@ EXPECTED_RENDER_SHEETS = set((
     "fire_loop.png",
     "smoke_puff.png",
 ))
-
-
-class ProbeWorker(pf.BuilderEntity, pf.HarvesterEntity, pf.MovableEntity, pf.GarrisonEntity):
-    def __init__(self, path, pfobj, name):
-        pf.BuilderEntity.__init__(self, path, pfobj, name, build_speed=512)
-
-
-class ProbeResource(pf.ResourceEntity):
-    pass
-
-
-class ProbeStorage(pf.StorageSiteEntity):
-    pass
-
-
-class ProbeBuildable(pf.BuildableEntity):
-    pass
-
-
-class ProbeGarrisonable(pf.GarrisonableEntity):
-    pass
 
 
 STATE = {
@@ -109,6 +95,7 @@ STATE = {
         "projectile_effects": False,
         "session_save": False,
         "session_checkpoint": False,
+        "session_restore": False,
     },
     "resource_dropoff_issued": False,
     "attack_started": False,
@@ -323,7 +310,11 @@ def _succeed():
         ),
         combat=int(STATE["checks"]["combat_attack"]),
         effects=int(STATE["checks"]["projectile_effects"]),
-        session=int(STATE["checks"]["session_save"] and STATE["checks"]["session_checkpoint"]),
+        session=int(
+            STATE["checks"]["session_save"]
+            and STATE["checks"]["session_checkpoint"]
+            and STATE["checks"]["session_restore"]
+        ),
     )
     _write(PROBE_PATH, marker)
     print(marker)
@@ -1187,6 +1178,7 @@ def _save_session_phase():
     if pf.get_render_info().get("backend") != "METAL":
         STATE["checks"]["session_save"] = True
         STATE["checks"]["session_checkpoint"] = True
+        STATE["checks"]["session_restore"] = True
         STATE["session"]["opengl_save_skipped"] = (
             "OpenGL custom-map save can stall in this generated-map soak; "
             "the default-map session roundtrip remains the OpenGL restore "
@@ -1217,14 +1209,14 @@ def _on_session_saved(user, event):
         _fail("session save file was not written")
     STATE["checks"]["session_checkpoint"] = True
     STATE["session"]["save_size_bytes"] = os.path.getsize(save_path)
-    STATE["session"]["restore_followup"] = (
-        "Generated custom-map restore currently trips the engine movement-state "
-        "rollback assert; keep default-map session restore covered by the "
-        "dedicated roundtrip probe until that engine edge is fixed."
-    )
-    if all(STATE["checks"].values()):
-        _succeed()
-    _fail("large-world checks failed after save checkpoint: {0}".format(STATE["checks"]))
+    STATE["session"]["restore_marker_path"] = os.path.join(STATE["output_dir"], "large_world_soak_restore.txt")
+    STATE["session"]["restore_summary_path"] = _summary_path(pf.get_render_info().get("backend", "unknown"))
+    os.environ["PF_LARGE_WORLD_SOAK_RESTORE_MARKER"] = STATE["session"]["restore_marker_path"]
+    os.environ["PF_LARGE_WORLD_SOAK_RESTORE_SUMMARY"] = STATE["session"]["restore_summary_path"]
+    os.environ["PF_LARGE_WORLD_SOAK_RESTORE_AUTOQUIT"] = "1"
+    _write_summary("restore_requested")
+    pf.load_session(save_path)
+    _set_phase("wait_load")
 
 
 def _on_session_save_fail(user, event):
