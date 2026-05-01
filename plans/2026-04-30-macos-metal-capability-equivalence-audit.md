@@ -8,9 +8,9 @@ Scope: assess whether the Apple Silicon Metal runtime is equivalent enough to th
 
 The macOS Metal runtime is ready for real game prototyping and upstream PR presentation as a native Apple Silicon Metal port. It is not yet a complete equivalence claim for every historical engine feature.
 
-The strongest evidence is that the default Metal binary launches without linking `OpenGL.framework`, five-scene OpenGL/Metal visual parity passes with matched cameras, and focused Metal probes cover launch, water, sprites/effects, minimap fog, settings, session roundtrip, editor feature surfaces, editor save/reload workflow plus deterministic editor screenshots, gameplay smoke, gameplay soak, forced GPU-movement smoke, dense movement, Python tasks, audio playback, and core RTS gameplay systems.
+The strongest evidence is that the default Metal binary launches without linking `OpenGL.framework`, five-scene OpenGL/Metal visual parity passes with matched cameras, and focused Metal probes cover launch, water, sprites/effects, minimap fog, settings, session roundtrip, editor feature surfaces, editor save/reload workflow plus deterministic editor screenshots, gameplay smoke, gameplay soak, forced GPU-movement smoke, dense movement, Python tasks, audio playback, core RTS gameplay systems, and a larger mixed economy/combat scenario.
 
-The largest remaining unproven gameplay areas have moved from core RTS systems to deeper edge-case coverage: larger mixed economy/combat scenarios and longer manual editor usability. `pf.Task` now has a Python 3.13 cooperative generator runtime, OpenAL audio has generated WAV fixtures plus Metal/OpenGL playback smoke coverage, dense formation movement has Metal GPU plus CPU/reference sanity coverage, resource/building/transport/garrison systems have Metal/OpenGL smoke coverage, water/air transport and navigation-layer reshuffle edges have dedicated coverage, dynamic blocker insertion/avoidance is verified on Metal/OpenGL, production automation toggles and worker transport constraints are verified on Metal/OpenGL, and editor terrain/object save plus fresh reload workflow is verified on Metal/OpenGL.
+The largest remaining unproven gameplay areas have moved from core RTS systems to longer manual/editor usability and future game-content scale. `pf.Task` now has a Python 3.13 cooperative generator runtime, OpenAL audio has generated WAV fixtures plus Metal/OpenGL playback smoke coverage, dense formation movement has Metal GPU plus CPU/reference sanity coverage, resource/building/transport/garrison systems have Metal/OpenGL smoke coverage, water/air transport and navigation-layer reshuffle edges have dedicated coverage, dynamic blocker insertion/avoidance is verified on Metal/OpenGL, production automation toggles and worker transport constraints are verified on Metal/OpenGL, a combined economy/fog/minimap/combat/effects scenario is verified on Metal/OpenGL, and editor terrain/object save plus fresh reload workflow is verified on Metal/OpenGL.
 
 ## Evidence Captured
 
@@ -30,6 +30,7 @@ Commands/results from the 2026-04-30 audit:
 | Core RTS gameplay systems | `GAMEPLAY_SYSTEMS_PASS backend=METAL resource=1 building=1 builder=1 transport=1 automation=1 garrison=1`; OpenGL sanity also passed |
 | Dynamic obstacle behavior | `DYNAMIC_OBSTACLE_PASS backend=METAL mode=gpu started=1 blocker=1 pathing=1 progress=1 clearance=1`; OpenGL CPU reference also passed the same route/blocker scenario |
 | Production automation variants | `PRODUCTION_AUTOMATION_PASS backend=METAL toggle=1 idle=1 blocked=1 resumed=1 pickup=1 dropoff=1`; OpenGL reference also passed the same automation gate/resume scenario |
+| Mixed economy/combat scenario | `MIXED_GAMEPLAY_SCENARIO_PASS backend=METAL move=1 fog=1 resource=1 building=1 transport=1 garrison=1 combat=1 effects=1`; OpenGL reference passed the same scenario |
 | Gameplay soak | `GAMEPLAY_SOAK_PASS backend=METAL stages=6 dynamic_water=0 combat=1` |
 | Water | `METAL_WATER_PROBE_PASS backend=METAL water_x=228.00 water_z=-148.00 water_h=-12.00` |
 | Sprite/VFX | `METAL_SPRITE_PROBE_PASS backend=METAL render_frames=24` and `METAL_GAMEPLAY_EFFECTS_PASS backend=METAL trail=1 impact=1 fire=1 smoke=1` |
@@ -66,13 +67,13 @@ Legend:
 | UI / Nuklear rendering | Smoke verified | Settings/session/menu/editor audit and live screenshot render through Metal. |
 | RTS minimap | Verified | Minimap fog probe passes; fog-of-war now applies to minimap instead of showing a revealed map. |
 | Fog of war | Verified | Native launch setting true; minimap and live screenshot confirm dark unexplored regions. |
-| RTS selection/move/pause/attack | Verified | Gameplay smoke and soak pass. |
+| RTS selection/move/pause/attack | Verified | Gameplay smoke, soak, and mixed scenario probes pass. |
 | Pathfinding land/water/air query APIs | Verified | Capability inventory and the gameplay edge probe confirm land, water, and air nearest-pathable queries return valid values on both Metal and OpenGL. |
 | GPU movement / crowd compute path | Smoke verified | Metal forced-GPU smoke passes and dense 64-unit formation stress passes with GPU movement enabled; Metal CPU and OpenGL CPU sanity runs also pass. |
 | Formation movement / navigation-layer reshuffle | Verified | New navigation/formation edge probe covers 1x1/3x3/5x5/7x7 ground pathing, preferred-formation resolution, rank formation move, and column reshuffle on Metal GPU movement and the OpenGL CPU reference. |
 | Dynamic obstacle behavior | Verified | Dynamic obstacle probe inserts a blocking founded buildable after mixed-radius formation movement starts, verifies the pathable field shifts away from the blocker, then confirms the group continues moving while preserving blocker clearance on Metal and OpenGL. |
-| Resource gathering / base-building / garrison / transport / automation | Smoke verified | Gameplay-systems probe creates controlled workers, resources, storage sites, build sites, transport jobs, automatic transport, and garrison orders on both Metal and OpenGL. The gameplay edge probe additionally covers water transport and `do_not_take_water` source restrictions, while the production automation probe verifies automatic-transport toggles, idle-with-auto-off behavior, worker `do_not_transport` blocking, resume after clearing the gate, pickup/dropoff, and post-delivery idle settling on both backends. |
-| Ranged combat projectile physics | Verified | Gameplay-effects probe saw projectile trail and impact events. |
+| Resource gathering / base-building / garrison / transport / automation | Smoke verified | Gameplay-systems probe creates controlled workers, resources, storage sites, build sites, transport jobs, automatic transport, and garrison orders on both Metal and OpenGL. The gameplay edge probe additionally covers water transport and `do_not_take_water` source restrictions, while the production automation probe verifies automatic-transport toggles, idle-with-auto-off behavior, worker `do_not_transport` blocking, resume after clearing the gate, pickup/dropoff, and post-delivery idle settling on both backends. The mixed scenario now exercises selection, fog/minimap setup, resource flow, building, transport, garrison, Mage projectile combat, and sprite effects in one run. |
+| Ranged combat projectile physics | Verified | Gameplay-effects probe saw projectile trail and impact events; the mixed scenario also verifies combat/projectile effects after economy and garrison stages. |
 | Configurable graphics settings | Verified | Settings apply/restore probes pass; restore probe now accounts for UI On/Off healthbar granularity and restores the exact original value through the API. |
 | Save/restore whole session | Verified | Session UI region/camera roundtrip passes. |
 | Embedded Python scripting | Verified | All probes are Python-driven under Python 3.13. |
@@ -99,5 +100,5 @@ For starting a real game on top of this engine, the answer is **yes**, with cons
 
 ## Recommended Next Targets
 
-1. Larger mixed-unit economy/combat scenario probe.
-2. Longer manual editor usability QA once the editor is packaged as a normal macOS app/window that Computer Use can attach to directly.
+1. Longer manual editor usability QA once the editor is packaged as a normal macOS app/window that Computer Use can attach to directly.
+2. Longer large-map/custom-world soak scenarios that combine exploration, economy, combat, save/restore, and content loading over longer sessions.
