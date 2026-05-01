@@ -65,10 +65,10 @@ Legend:
 | RTS minimap | Verified | Minimap fog probe passes; fog-of-war now applies to minimap instead of showing a revealed map. |
 | Fog of war | Verified | Native launch setting true; minimap and live screenshot confirm dark unexplored regions. |
 | RTS selection/move/pause/attack | Verified | Gameplay smoke and soak pass. |
-| Pathfinding land/water/air query APIs | Smoke verified | Capability inventory confirms land, water, and air nearest-pathable queries return valid values. |
+| Pathfinding land/water/air query APIs | Verified | Capability inventory and the gameplay edge probe confirm land, water, and air nearest-pathable queries return valid values on both Metal and OpenGL. |
 | GPU movement / crowd compute path | Smoke verified | Metal forced-GPU smoke passes and dense 64-unit formation stress passes with GPU movement enabled; Metal CPU and OpenGL CPU sanity runs also pass. |
 | Formation movement / dynamic obstacle behavior | Smoke verified | Movement smoke/soak exercises group movement; dense 64-unit rank formation stress now exercises larger formation dispatch. Hungarian reshuffle and navigation-layer edge cases still need deeper dedicated probes. |
-| Resource gathering / base-building / garrison / transport | Smoke verified | New gameplay-systems probe creates controlled workers, resources, storage sites, build sites, transport jobs, automatic transport, and garrison orders on both Metal and OpenGL. |
+| Resource gathering / base-building / garrison / transport | Smoke verified | Gameplay-systems probe creates controlled workers, resources, storage sites, build sites, transport jobs, automatic transport, and garrison orders on both Metal and OpenGL. The gameplay edge probe additionally covers water transport and `do_not_take_water` source restrictions on both backends. |
 | Ranged combat projectile physics | Verified | Gameplay-effects probe saw projectile trail and impact events. |
 | Configurable graphics settings | Verified | Settings apply/restore probes pass; restore probe now accounts for UI On/Off healthbar granularity and restores the exact original value through the API. |
 | Save/restore whole session | Verified | Session UI region/camera roundtrip passes. |
