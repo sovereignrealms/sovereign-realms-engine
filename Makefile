@@ -451,7 +451,7 @@ endif
 
 -include $(PF_DEPS)
 
-.PHONY: deps guard_build_ready pf clean run run_hfmp run_editor clean_deps launchers .FORCE
+.PHONY: deps guard_build_ready pf clean run run_hfmp run_editor editor_app run_editor_app clean_deps launchers .FORCE
 
 pf: guard_build_ready $(BIN)
 
@@ -486,6 +486,22 @@ ifeq ($(PLAT),MACOS_X86_64)
 	@false
 else
 	@$(BIN) ./ ./scripts/editor/main.py
+endif
+
+editor_app:
+ifeq ($(PLAT),MACOS_ARM64)
+	@scripts/macos/build_editor_app_bundle.sh --backend $(RENDER_BACKEND)
+else
+	@printf "%s\n" "editor_app is only supported for PLAT=MACOS_ARM64."
+	@false
+endif
+
+run_editor_app:
+ifeq ($(PLAT),MACOS_ARM64)
+	@scripts/macos/build_editor_app_bundle.sh --backend $(RENDER_BACKEND) --launch
+else
+	@printf "%s\n" "run_editor_app is only supported for PLAT=MACOS_ARM64."
+	@false
 endif
 
 launchers:

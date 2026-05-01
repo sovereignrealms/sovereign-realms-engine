@@ -38,7 +38,7 @@ Commands/results from the 2026-04-30 audit:
 | Minimap fog | `MINIMAP_FOG_PROBE_PASS captures=5` |
 | Session roundtrip | `NATIVE_SESSION_RESTORED objs=388 regions=1 cameras=1 ...` |
 | Settings | `NATIVE_SETTINGS_APPLIED ...` and `NATIVE_SETTINGS_RESTORED ...` |
-| Editor | `EDITOR_FEATURE_AUDIT_READY backend=METAL renderer=Apple M2 Max factions=2`; `EDITOR_WORKFLOW_READY backend=METAL ... placed_objects=2 saved_objects=2`; `EDITOR_WORKFLOW_RELOAD_READY backend=METAL ... loaded_objects=2`; `EDITOR_VISUAL_READY backend=METAL renderer=Apple M2 Max captures=2 placed_objects=2 saved_objects=2`; macOS top-bar inset added after live screenshot showed the tab bar under the system menu; OpenGL sanity also passed |
+| Editor | `EDITOR_FEATURE_AUDIT_READY backend=METAL renderer=Apple M2 Max factions=2`; `EDITOR_WORKFLOW_READY backend=METAL ... placed_objects=2 saved_objects=2`; `EDITOR_WORKFLOW_RELOAD_READY backend=METAL ... loaded_objects=2`; `EDITOR_VISUAL_READY backend=METAL renderer=Apple M2 Max captures=2 placed_objects=2 saved_objects=2`; repo-local `dist/Permafrost Editor.app` packaging verifies through macOS `open` and Computer Use now sees `Permafrost Editor — org.permafrostengine.editor.dev`; OpenGL sanity also passed |
 | Python task runtime | `METAL_TASK_PROBE_PASS backend=METAL steps=start,yield,sleep,event`; OpenGL sanity also passed with the same steps |
 | Legacy task sample | `PONG_TASK_PROBE_PASS backend=METAL`; OpenGL sanity also passed |
 | Audio | `METAL_AUDIO_PROBE_PASS backend=METAL music=audio_probe_tone effect=audio_probe_beep`; OpenGL sanity also passed |
@@ -82,7 +82,7 @@ Legend:
 | Fiber-backed Python tasks (`pf.Task`) | Smoke verified | Python 3.13 supports cooperative generator tasks using `yield self.yield_()`, `yield self.sleep(ms)`, and `yield self.await_event(event)`. The legacy Pong sample has been migrated and runtime-probed on Metal/OpenGL. |
 | Event system | Smoke verified | Probe event handlers, attack-start handlers, and UI/global events all execute. |
 | Audio API / positional effects | Smoke verified | Generated WAV fixtures are indexed under `assets/music` and `assets/sounds`; Metal/OpenGL probes exercise `get_all_music`, `play_music`, `curr_music`, `play_global_effect`, and positional `play_effect`. |
-| Map/scene editor | Smoke verified | Metal editor launch, feature audit, terrain/object save, fresh saved map/scene reload, and deterministic screenshot verification pass. The visual harness paints a cobblestone patch, places animated/static objects, captures Terrain and Objects tabs with window-specific screenshots, validates the PNGs as nonblank, and saves/reloads the edited map/scene. Computer Use could not attach to the raw SDL `pf-arm64` process, so desktop verification remains screenshot/probe based. |
+| Map/scene editor | Smoke verified | Metal editor launch, feature audit, terrain/object save, fresh saved map/scene reload, and deterministic screenshot verification pass. The visual harness paints a cobblestone patch, places animated/static objects, captures Terrain and Objects tabs with window-specific screenshots, validates the PNGs as nonblank, and saves/reloads the edited map/scene. The repo-local macOS app bundle now gives the editor a normal `Permafrost Editor` app identity for Computer Use attach checks; deeper manual editing flows remain a follow-up. |
 | Debug/profiling instrumentation | API/source present | Debug/perf UI surfaces are touched by editor/game probes, but deep profiling/timestamp equivalence is not part of this audit. |
 | Custom ASCII model/map import/export | API/source present | Runtime loads the existing assets/maps; exporter/importer workflows were not revalidated here. |
 | Image quilting / Wang tiling | API/source present | Historical engine features; not exercised in this Mac Metal audit. |
@@ -101,5 +101,5 @@ For starting a real game on top of this engine, the answer is **yes**, with cons
 
 ## Recommended Next Targets
 
-1. Longer manual editor usability QA once the editor is packaged as a normal macOS app/window that Computer Use can attach to directly.
-2. Longer wall-clock soak or editor packaging: the generated-map checkpoint restore path now verifies at 10x10 with 54 objects, 5 regions, 4 cameras, longer post-combat settle, and 3 repeated gameplay loops; the next stress target is either an hour-scale run or packaging the editor as a normal macOS app/window for direct Computer Use QA.
+1. Deeper manual editor usability QA through the packaged `Permafrost Editor.app`: paint terrain, place animated/static objects, save/reload, and inspect window focus/menu behavior with Computer Use.
+2. Longer wall-clock soak: the generated-map checkpoint restore path now verifies at 10x10 with 54 objects, 5 regions, 4 cameras, longer post-combat settle, and 3 repeated gameplay loops; the next runtime stress target is an hour-scale run.

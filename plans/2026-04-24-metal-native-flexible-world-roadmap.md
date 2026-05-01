@@ -801,6 +801,16 @@ reverted independently. Working notebook: [a.md](../a.md).
     restoring the same 54-object, 5-region, 4-camera generated world, and
     OpenGL passes the same looped gameplay path.
 
+72. **macOS editor app packaging and Computer Use attach smoke** — DONE
+    (2026-05-01). Added `scripts/macos/build_editor_app_bundle.sh`, `make
+    editor_app`, and `make run_editor_app` so the Metal editor can be staged as
+    `dist/Permafrost Editor.app` with a normal bundle identifier
+    (`org.permafrostengine.editor.dev`). The package remains repo-local and
+    launches `bin/pf-arm64` with `scripts/editor/main.py`, but macOS `open`
+    now presents it as `Permafrost Editor`; Computer Use lists and attaches to
+    the app/window. The existing editor launch, feature, save, and reload probes
+    still pass on Metal after packaging.
+
 ## Current Status
 
 - Metal already verifies cold launch, startup UI, paired normal-gameplay smoke coverage, paired free-roam gameplay soak coverage, Apple Silicon editor launch, first editor feature-surface audit, editor terrain/object save plus fresh reload workflow, deterministic Terrain/Objects editor screenshots on the Metal runtime, Python 3 cooperative `pf.Task` scheduling plus the migrated Pong task sample, OpenAL music/global-effect/positional-effect smoke coverage, dense 64-unit GPU movement/crowd stress, core RTS resource/building/transport/automation/garrison smoke coverage, water/air pathing and water-transport edge behavior, navigation-layer formation movement and rank-to-column reshuffle coverage, dynamic blocker insertion/avoidance coverage, production automation variant coverage, larger mixed economy/combat scenario coverage, larger generated custom-world soak coverage with Metal session checkpoint restore, the Apple Silicon default runtime build, the first Metal/OpenGL link decoupling, the first swapchain-command decoupling, the frame command identity split, the view/projection/light command identity split, the screenspace/box helper command identity split, the low-risk debug command identity split, the selection/overlay command identity split, the loading-screen/healthbar command identity split, the skeleton/normals/model-preview command identity split, the core scene draw command identity split, the depth-pass command identity split, the map command identity split, the water command identity split, the minimap command identity split, the tile command identity split, the batch command identity split, the animation command identity split, the sprite command identity split, the UI command identity split, the Metal GL perf/query wrapper cleanup, the Metal mesh-init/skybox loader-root split, the Metal position/movement loader-root split, the Metal texture-loader root split, the native Metal world-sprite batch path, real sprite effect fixture/probe coverage for projectile trails/impacts/fire/smoke, gameplay-driven Mage projectile trail/impact coverage, terrain, real terrain textures, the first terrain patch-command/material-adjacency pass, the first terrain sampler/mipmap parity pass, the first terrain texture-array LOD-bias parity fix, the first terrain height-map normal/lighting parity pass, the first terrain splat blending parity pass, the first terrain-rich larger/custom-map fixture, the first custom-map minimap bake projection/map-state pass, minimap-hidden custom-map sampling, empty-skybox background coverage parity, basin water-edge/depression fixture coverage, normal-gameplay water/rocks skybox-reference parity, the first material texture-array mipmap pass for static props/rocks, the first mesh material UV parity fix for units and rocks/static props, the first static-prop winding/culling parity fix, the first high-specular static-prop normal/specular parity fix, the first mesh normal-transform parity fix, the first unlit screen-space statusbar/healthbar tone fix plus the tighter GL-style healthbar outline/fill parity fix, the first mesh shadow formula parity fix, the first terrain shadow coverage parity fix, the first terrain shadow Poisson Y parity fix, the first shadow-map Y-lookup and per-caster winding split, the first water/shore/fog parity foundation, the first water material/timing parity fix, the first water sampled-scene parity fix, the first offscreen water-scene color/tone fix, the first water final-color formula parity fix, static/skinned meshes, foliage cutouts, selection overlays, drag-box selection, terrain-conforming debug/vector overlays and debug primitives, healthbars, minimap fog-of-war HUD display, the first minimap dynamic water-update/scissor pass, map overlays, fog, water foundations, the first skybox command path with skybox-fed water reflections, main-frame skybox visual parity with the default Apple Silicon OpenGL skybox reference, skybox-fed water reflection scale parity, the first light-state/material-lighting parity slice, explicit MSAA parity state, ship-default 4x MSAA with parity-mode 1x captures, frame pacing, main-frame depth, shadow-map parity, lossless shadow-map diagnostics, deterministic fixed-time lighting phases, and the deterministic fixed-camera capture harness.
@@ -808,7 +818,7 @@ reverted independently. Working notebook: [a.md](../a.md).
 - Still pending after the Apple Silicon Metal-default switch:
   - continue visual/smoothness regression checks against the OpenGL Apple Silicon baseline
   - polish any concrete remaining material/color residuals found by review
-  - broader manual editor usability QA and direct desktop automation once the editor is packaged as a normal macOS app/window
+  - deeper manual editor usability QA through the packaged app/window
   - finish any remaining OpenGL helper-object dependency isolation
 
 ## Validation
@@ -879,6 +889,11 @@ reverted independently. Working notebook: [a.md](../a.md).
   and `visual_parity_captures/2026-05-01-large-world-soak-scale-opengl/`;
   repeated-loop 10x10 soak at `visual_parity_captures/2026-05-01-large-world-soak-loop-metal/`
   and `visual_parity_captures/2026-05-01-large-world-soak-loop-opengl/`.
+- Latest packaged editor app smoke: `make editor_app PLAT=MACOS_ARM64
+  MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL` stages `dist/Permafrost
+  Editor.app`; `scripts/macos/build_editor_app_bundle.sh --skip-build --verify`
+  reports `EDITOR_APP_LAUNCH_READY`, and Computer Use sees
+  `Permafrost Editor — org.permafrostengine.editor.dev`.
 - Latest mesh shadow formula parity artifact: `visual_parity_captures/2026-04-24-metal-mesh-shadow-parity/`.
 - Latest terrain shadow coverage parity artifact: `visual_parity_captures/2026-04-24-metal-terrain-shadow-coverage/`.
 - Latest water/shore/fog parity artifact: `visual_parity_captures/2026-04-24-metal-water-fog-parity/`.
