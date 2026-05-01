@@ -10,7 +10,7 @@ The macOS Metal runtime is ready for real game prototyping and upstream PR prese
 
 The strongest evidence is that the default Metal binary launches without linking `OpenGL.framework`, five-scene OpenGL/Metal visual parity passes with matched cameras, and focused Metal probes cover launch, water, sprites/effects, minimap fog, settings, session roundtrip, editor feature surfaces, editor save/reload workflow plus deterministic editor screenshots, gameplay smoke, gameplay soak, forced GPU-movement smoke, dense movement, Python tasks, audio playback, and core RTS gameplay systems.
 
-The largest remaining unproven gameplay areas have moved from core RTS systems to deeper edge-case coverage: water/air transport variants, extreme navigation-layer/Hungarian reshuffle cases, production automation, and longer manual editor usability. `pf.Task` now has a Python 3.13 cooperative generator runtime, OpenAL audio has generated WAV fixtures plus Metal/OpenGL playback smoke coverage, dense formation movement has Metal GPU plus CPU/reference sanity coverage, resource/building/transport/garrison systems have Metal/OpenGL smoke coverage, and editor terrain/object save plus fresh reload workflow is verified on Metal/OpenGL.
+The largest remaining unproven gameplay areas have moved from core RTS systems to deeper edge-case coverage: production automation variants, larger mixed economy/combat scenarios, and longer manual editor usability. `pf.Task` now has a Python 3.13 cooperative generator runtime, OpenAL audio has generated WAV fixtures plus Metal/OpenGL playback smoke coverage, dense formation movement has Metal GPU plus CPU/reference sanity coverage, resource/building/transport/garrison systems have Metal/OpenGL smoke coverage, water/air transport and navigation-layer reshuffle edges have dedicated coverage, dynamic blocker insertion/avoidance is verified on Metal/OpenGL, and editor terrain/object save plus fresh reload workflow is verified on Metal/OpenGL.
 
 ## Evidence Captured
 
@@ -28,6 +28,7 @@ Commands/results from the 2026-04-30 audit:
 | Forced GPU movement smoke | `METAL_GAMEPLAY_SMOKE_PASS ... gpu_movement=1` |
 | Dense GPU crowd movement | `GPU_CROWD_PASS backend=METAL movement_mode=gpu gpu_movement=1 units=64 moved=62 avg_progress=15.41`; Metal CPU and OpenGL CPU sanity also passed |
 | Core RTS gameplay systems | `GAMEPLAY_SYSTEMS_PASS backend=METAL resource=1 building=1 builder=1 transport=1 automation=1 garrison=1`; OpenGL sanity also passed |
+| Dynamic obstacle behavior | `DYNAMIC_OBSTACLE_PASS backend=METAL mode=gpu started=1 blocker=1 pathing=1 progress=1 clearance=1`; OpenGL CPU reference also passed the same route/blocker scenario |
 | Gameplay soak | `GAMEPLAY_SOAK_PASS backend=METAL stages=6 dynamic_water=0 combat=1` |
 | Water | `METAL_WATER_PROBE_PASS backend=METAL water_x=228.00 water_z=-148.00 water_h=-12.00` |
 | Sprite/VFX | `METAL_SPRITE_PROBE_PASS backend=METAL render_frames=24` and `METAL_GAMEPLAY_EFFECTS_PASS backend=METAL trail=1 impact=1 fire=1 smoke=1` |
@@ -68,7 +69,7 @@ Legend:
 | Pathfinding land/water/air query APIs | Verified | Capability inventory and the gameplay edge probe confirm land, water, and air nearest-pathable queries return valid values on both Metal and OpenGL. |
 | GPU movement / crowd compute path | Smoke verified | Metal forced-GPU smoke passes and dense 64-unit formation stress passes with GPU movement enabled; Metal CPU and OpenGL CPU sanity runs also pass. |
 | Formation movement / navigation-layer reshuffle | Verified | New navigation/formation edge probe covers 1x1/3x3/5x5/7x7 ground pathing, preferred-formation resolution, rank formation move, and column reshuffle on Metal GPU movement and the OpenGL CPU reference. |
-| Dynamic obstacle behavior | Smoke verified | Movement smoke/soak and dense formation stress exercise normal obstacle interaction; a dedicated dynamic blocker/avoidance probe remains future deeper matrix work. |
+| Dynamic obstacle behavior | Verified | Dynamic obstacle probe inserts a blocking founded buildable after mixed-radius formation movement starts, verifies the pathable field shifts away from the blocker, then confirms the group continues moving while preserving blocker clearance on Metal and OpenGL. |
 | Resource gathering / base-building / garrison / transport | Smoke verified | Gameplay-systems probe creates controlled workers, resources, storage sites, build sites, transport jobs, automatic transport, and garrison orders on both Metal and OpenGL. The gameplay edge probe additionally covers water transport and `do_not_take_water` source restrictions on both backends. |
 | Ranged combat projectile physics | Verified | Gameplay-effects probe saw projectile trail and impact events. |
 | Configurable graphics settings | Verified | Settings apply/restore probes pass; restore probe now accounts for UI On/Off healthbar granularity and restores the exact original value through the API. |
@@ -97,5 +98,5 @@ For starting a real game on top of this engine, the answer is **yes**, with cons
 
 ## Recommended Next Targets
 
-1. Deeper gameplay edge probes for water/air transport, production automation, navigation-layer reshuffle edge cases, and larger mixed-unit economy/combat scenarios.
+1. Deeper gameplay edge probes for production automation variants and larger mixed-unit economy/combat scenarios.
 2. Longer manual editor usability QA once the editor is packaged as a normal macOS app/window that Computer Use can attach to directly.
