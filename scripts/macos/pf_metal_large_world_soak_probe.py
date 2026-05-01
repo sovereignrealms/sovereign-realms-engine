@@ -66,8 +66,10 @@ STATE = {
     "entities": [],
     "combat_units": [],
     "mages": [],
+    "enemies": [],
     "enemy": None,
     "enemy_hp_start": None,
+    "soak_loop_idx": 0,
     "waypoints": [],
     "waypoint_idx": 0,
     "events": {},
@@ -94,6 +96,7 @@ STATE = {
         "garrison": False,
         "combat_attack": False,
         "projectile_effects": False,
+        "long_duration_loops": False,
         "session_save": False,
         "session_checkpoint": False,
         "session_restore": False,
@@ -139,7 +142,10 @@ def _setup_config():
         "dynamic_tile_settle_ticks": _arg_int("--dynamic-tile-settle-ticks", "PF_LARGE_WORLD_SOAK_DYNAMIC_TILE_SETTLE_TICKS", 45, minimum=1),
         "pre_save_settle_ticks": _arg_int("--pre-save-settle-ticks", "PF_LARGE_WORLD_SOAK_PRE_SAVE_SETTLE_TICKS", 60, minimum=1),
         "post_combat_soak_ticks": _arg_int("--post-combat-soak-ticks", "PF_LARGE_WORLD_SOAK_POST_COMBAT_SOAK_TICKS", 0, minimum=0),
+        "soak_loops": _arg_int("--soak-loops", "PF_LARGE_WORLD_SOAK_LOOPS", 0, minimum=0),
+        "soak_loop_ticks": _arg_int("--soak-loop-ticks", "PF_LARGE_WORLD_SOAK_LOOP_TICKS", 90, minimum=1),
     }
+    STATE["checks"]["long_duration_loops"] = STATE["config"]["soak_loops"] == 0
 
 
 def _write(path, payload):
@@ -909,6 +915,7 @@ def _setup_entities(rows, cols, center):
     STATE["garrisonable"] = garrisonable
     STATE["combat_units"] = combat_units
     STATE["mages"] = [ent for ent in combat_units if isinstance(ent, Mage)]
+    STATE["enemies"] = enemies
     STATE["enemy"] = enemies[0]
     STATE["waypoints"] = waypoints
 
@@ -1000,26 +1007,28 @@ def _dynamic_tile_update_phase():
     rows = STATE["map"]["rows"]
     cols = STATE["map"]["cols"]
     if STATE["ticks"] == 1:
-        chunk = (rows // 2, cols // 2)
-        tile_pos = (12, 12)
-        tile = pf.Tile()
-        tile.type = pf.TILETYPE_FLAT
-        tile.base_height = 3
-        tile.ramp_height = 0
-        tile.top_mat_idx = 9
-        tile.sides_mat_idx = 1
-        tile.pathable = 0
-        tile.blend_mode = pf.BLEND_MODE_BLUR
-        tile.blend_normals = 1
-        pf.update_tile(chunk, tile_pos, tile)
-        STATE["map"]["dynamic_tile_update"] = {
-            "chunk": chunk,
-            "tile": tile_pos,
-            "after": _tile_attrs(tile),
-        }
+        STATE["map"]["dynamic_tile_update"] = _apply_dynamic_tile_update(rows // 2, cols // 2, 12, 12)
     if STATE["ticks"] >= STATE["config"]["dynamic_tile_settle_ticks"]:
         STATE["checks"]["dynamic_tile_update"] = True
         _set_phase("resource")
+
+
+def _apply_dynamic_tile_update(chunk_r, chunk_c, tile_r, tile_c):
+    tile = pf.Tile()
+    tile.type = pf.TILETYPE_FLAT
+    tile.base_height = 3
+    tile.ramp_height = 0
+    tile.top_mat_idx = 9
+    tile.sides_mat_idx = 1
+    tile.pathable = 0
+    tile.blend_mode = pf.BLEND_MODE_BLUR
+    tile.blend_normals = 1
+    pf.update_tile((chunk_r, chunk_c), (tile_r, tile_c), tile)
+    return {
+        "chunk": (chunk_r, chunk_c),
+        "tile": (tile_r, tile_c),
+        "after": _tile_attrs(tile),
+    }
 
 
 def _drive_harvest_cycle():
@@ -1185,6 +1194,16 @@ def _spawn_fire_smoke_fixture(enemy):
 def _combat_setup_phase():
     enemy = STATE["enemy"]
     point = STATE["waypoints"][0]
+    enemy_point = _stage_enemy_and_mages(enemy, point)
+    STATE["enemy_hp_start"] = enemy.hp
+    STATE["combat"]["enemy_hp_start"] = enemy.hp
+    _spawn_fire_smoke_fixture(enemy)
+    for mage in STATE["mages"]:
+        mage.attack(_ent_xz(enemy))
+    _set_phase("combat")
+
+
+def _stage_enemy_and_mages(enemy, point):
     enemy_point = _pathable_near((point[0] + 24.0, point[1] + 4.0), radius=enemy.selection_radius)
     if enemy_point is None:
         _fail("could not stage enemy for large-world combat")
@@ -1201,12 +1220,7 @@ def _combat_setup_phase():
         enemy.stop()
     pf.get_active_camera().center_over_location(enemy_point)
     pf.set_unit_selection(STATE["mages"])
-    STATE["enemy_hp_start"] = enemy.hp
-    STATE["combat"]["enemy_hp_start"] = enemy.hp
-    _spawn_fire_smoke_fixture(enemy)
-    for mage in STATE["mages"]:
-        mage.attack(_ent_xz(enemy))
-    _set_phase("combat")
+    return enemy_point
 
 
 def _effects_ready():
@@ -1239,7 +1253,9 @@ def _combat_phase():
         "projectile_hits": len(STATE["projectile_hits"]),
     })
     if ready:
-        if STATE["config"]["post_combat_soak_ticks"] > 0:
+        if STATE["config"]["soak_loops"] > 0:
+            _set_phase("long_soak_loop")
+        elif STATE["config"]["post_combat_soak_ticks"] > 0:
             _set_phase("post_combat_soak")
         else:
             _prepare_for_save()
@@ -1247,6 +1263,58 @@ def _combat_phase():
         return
     if _phase_elapsed() > 24.0:
         _fail(reason or "timed out waiting for combat/effects")
+
+
+def _long_soak_loop_phase():
+    loops = STATE["config"]["soak_loops"]
+    loop_ticks = STATE["config"]["soak_loop_ticks"]
+    loop_idx = STATE["soak_loop_idx"]
+    if STATE["ticks"] == 1:
+        point = STATE["waypoints"][loop_idx % len(STATE["waypoints"])]
+        enemy = STATE["enemies"][loop_idx % len(STATE["enemies"])]
+        staged = _stage_combat_units(point)
+        enemy_point = _stage_enemy_and_mages(enemy, point)
+        _spawn_fire_smoke_fixture(enemy)
+        for mage in STATE["mages"]:
+            mage.attack(_ent_xz(enemy))
+        if STATE["map"].get("rows") and STATE["map"].get("cols"):
+            tile_update = _apply_dynamic_tile_update(
+                (loop_idx + STATE["map"]["rows"] // 2) % STATE["map"]["rows"],
+                (loop_idx + STATE["map"]["cols"] // 2) % STATE["map"]["cols"],
+                8 + (loop_idx % 16),
+                8 + ((loop_idx * 3) % 16),
+            )
+        else:
+            tile_update = None
+        STATE["records"].append({
+            "name": "long_soak_loop_{0}".format(loop_idx),
+            "target": point,
+            "enemy": _snapshot_entity(enemy),
+            "enemy_point": enemy_point,
+            "tile_update": tile_update,
+            "units": staged,
+        })
+
+    if STATE["ticks"] < loop_ticks:
+        return
+
+    if STATE["records"]:
+        STATE["records"][-1]["frame_ms"] = _metrics(STATE["frame_ms"][-loop_ticks:])
+        STATE["records"][-1]["units_after"] = [
+            {"name": ent.name, "position": _safe_ent_xz(ent)}
+            for ent in STATE["combat_units"]
+        ]
+    STATE["soak_loop_idx"] += 1
+    STATE["combat"]["long_soak_loops_completed"] = STATE["soak_loop_idx"]
+    if STATE["soak_loop_idx"] >= loops:
+        STATE["checks"]["long_duration_loops"] = True
+        if STATE["config"]["post_combat_soak_ticks"] > 0:
+            _set_phase("post_combat_soak")
+        else:
+            _prepare_for_save()
+            _set_phase("pre_save_settle")
+        return
+    _set_phase("long_soak_loop")
 
 
 def _post_combat_soak_phase():
@@ -1416,6 +1484,10 @@ def on_update(user, event):
 
     if STATE["phase"] == "combat":
         _combat_phase()
+        return
+
+    if STATE["phase"] == "long_soak_loop":
+        _long_soak_loop_phase()
         return
 
     if STATE["phase"] == "post_combat_soak":
