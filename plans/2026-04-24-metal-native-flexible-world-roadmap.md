@@ -805,11 +805,13 @@ reverted independently. Working notebook: [a.md](../a.md).
     (2026-05-01). Added `scripts/macos/build_editor_app_bundle.sh`, `make
     editor_app`, and `make run_editor_app` so the Metal editor can be staged as
     `dist/Permafrost Editor.app` with a normal bundle identifier
-    (`org.permafrostengine.editor.dev`). The package remains repo-local and
-    launches `bin/pf-arm64` with `scripts/editor/main.py`, but macOS `open`
-    now presents it as `Permafrost Editor`; Computer Use lists and attaches to
-    the app/window. The existing editor launch, feature, save, and reload probes
-    still pass on Metal after packaging.
+    (`org.permafrostengine.editor.dev`). The package now stages `pf-arm64`,
+    `assets/`, `scripts/`, and `shaders/` under
+    `Contents/Resources/permafrost`, avoiding macOS privacy failures when a
+    launched app reads a Desktop checkout. macOS `open` presents it as
+    `Permafrost Editor`; Computer Use lists the app/window and sees the real
+    editor UI. The existing editor launch, feature, save, reload, and visual
+    probes still pass on Metal after packaging.
 
 ## Current Status
 
@@ -818,7 +820,7 @@ reverted independently. Working notebook: [a.md](../a.md).
 - Still pending after the Apple Silicon Metal-default switch:
   - continue visual/smoothness regression checks against the OpenGL Apple Silicon baseline
   - polish any concrete remaining material/color residuals found by review
-  - deeper manual editor usability QA through the packaged app/window
+  - deeper manual editor editing QA through the packaged app/window
   - finish any remaining OpenGL helper-object dependency isolation
 
 ## Validation
@@ -890,10 +892,11 @@ reverted independently. Working notebook: [a.md](../a.md).
   repeated-loop 10x10 soak at `visual_parity_captures/2026-05-01-large-world-soak-loop-metal/`
   and `visual_parity_captures/2026-05-01-large-world-soak-loop-opengl/`.
 - Latest packaged editor app smoke: `make editor_app PLAT=MACOS_ARM64
-  MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL` stages `dist/Permafrost
-  Editor.app`; `scripts/macos/build_editor_app_bundle.sh --skip-build --verify`
-  reports `EDITOR_APP_LAUNCH_READY`, and Computer Use sees
-  `Permafrost Editor — org.permafrostengine.editor.dev`.
+  MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL` stages a self-contained
+  `dist/Permafrost Editor.app`; `scripts/macos/build_editor_app_bundle.sh
+  --skip-build --verify` reports `EDITOR_APP_LAUNCH_READY`, and Computer Use
+  sees the rendered `Permafrost Editor — org.permafrostengine.editor.dev`
+  window instead of a blank clear-color surface.
 - Latest mesh shadow formula parity artifact: `visual_parity_captures/2026-04-24-metal-mesh-shadow-parity/`.
 - Latest terrain shadow coverage parity artifact: `visual_parity_captures/2026-04-24-metal-terrain-shadow-coverage/`.
 - Latest water/shore/fog parity artifact: `visual_parity_captures/2026-04-24-metal-water-fog-parity/`.

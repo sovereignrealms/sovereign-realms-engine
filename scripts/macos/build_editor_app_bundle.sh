@@ -75,8 +75,9 @@ fi
 
 MACOS_DIR="$BUNDLE_DIR/Contents/MacOS"
 RESOURCES_DIR="$BUNDLE_DIR/Contents/Resources"
+RUNTIME_DIR="$RESOURCES_DIR/permafrost"
 rm -rf "$BUNDLE_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
+mkdir -p "$MACOS_DIR" "$RUNTIME_DIR"
 
 cat > "$BUNDLE_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -113,22 +114,34 @@ cat > "$BUNDLE_DIR/Contents/PkgInfo" <<'EOF'
 APPL????
 EOF
 
+cp "$ROOT/bin/pf-arm64" "$MACOS_DIR/pf-arm64"
+/usr/bin/ditto "$ROOT/assets" "$RUNTIME_DIR/assets"
+/usr/bin/ditto "$ROOT/scripts" "$RUNTIME_DIR/scripts"
+/usr/bin/ditto "$ROOT/shaders" "$RUNTIME_DIR/shaders"
+
 cat > "$MACOS_DIR/permafrost-editor" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-cd "$ROOT"
-"$ROOT/bin/pf-arm64" "$ROOT" "$ROOT/scripts/editor/main.py"
+RUNTIME_DIR="$(cd "$SCRIPT_DIR/../Resources/permafrost" && pwd)"
+cd "$RUNTIME_DIR"
+LOG_PATH="${PF_EDITOR_APP_LOG:-/tmp/permafrost-editor.log}"
+mkdir -p "$(dirname "$LOG_PATH")"
+{
+    echo "Permafrost Editor launch $(date)"
+    echo "runtime=$RUNTIME_DIR"
+} >> "$LOG_PATH"
+exec "$SCRIPT_DIR/pf-arm64" ./ ./scripts/macos/pf_editor_app.py >> "$LOG_PATH" 2>&1
 EOF
 chmod +x "$MACOS_DIR/permafrost-editor"
 
 cat > "$RESOURCES_DIR/README.txt" <<EOF
 Development app bundle for the Permafrost Engine editor.
 
-This bundle is intentionally repo-local: it launches $ROOT/bin/pf-arm64 with
-$ROOT/scripts/editor/main.py and reads assets from the repository checkout.
+This bundle stages pf-arm64 plus the assets, scripts, and shaders required by
+the editor under Contents/Resources/permafrost so macOS privacy controls do not
+block the app from reading the repository checkout on Desktop/Documents.
 EOF
 
 echo "EDITOR_APP_BUNDLE_READY path=$BUNDLE_DIR backend=$BACKEND"
@@ -138,7 +151,7 @@ if [[ "$LAUNCH" -eq 1 ]]; then
 fi
 
 if [[ "$VERIFY" -eq 1 ]]; then
-    MATCH="bin/pf-arm64 .*scripts/editor/main.py"
+    MATCH="pf-arm64 .*scripts/macos/pf_editor_app.py"
     pid=""
     for _ in {1..80}; do
         pid="$(pgrep -f "$MATCH" | head -n 1 || true)"

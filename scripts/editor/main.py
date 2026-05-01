@@ -346,6 +346,7 @@ def _editor_visual_probe_capture(name):
     path = os.path.join(output_dir, "editor_{0}.png".format(name))
     ret = 1
     last_error = ""
+    window_id = None
     for _ in range(5):
         _editor_visual_probe_activate_window()
         window_id = _editor_visual_probe_capture_window_id()
@@ -369,6 +370,28 @@ def _editor_visual_probe_capture(name):
             last_error = "timeout"
             ret = 1
         time.sleep(0.15)
+    if ret != 0:
+        window_error = last_error
+        for _ in range(3):
+            _editor_visual_probe_activate_window()
+            try:
+                capture = subprocess.run(
+                    ["screencapture", "-x", path],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                    timeout=3.0,
+                )
+                ret = capture.returncode
+                last_error = capture.stderr.strip()
+                if ret == 0:
+                    print("EDITOR_VISUAL_CAPTURE_FALLBACK window_id={0} stderr={1}".format(window_id, window_error))
+                    sys.stdout.flush()
+                    break
+            except subprocess.TimeoutExpired:
+                last_error = "timeout"
+                ret = 1
+            time.sleep(0.15)
     if ret != 0:
         print("EDITOR_VISUAL_CAPTURE_FAIL window_id={0} stderr={1}".format(window_id, last_error))
         sys.stdout.flush()
