@@ -2901,6 +2901,9 @@ static int PyBuildableEntity_init(PyBuildableEntityObject *self, PyObject *args,
         }
     }
 
+#if PY_MAJOR_VERSION >= 3 && defined(__APPLE__) && defined(__aarch64__)
+    return 0;
+#else
     /* Call the next __init__ method in the MRO. This is required for all __init__ calls in the 
      * MRO to complete in cases when this class is one of multiple base classes of another type. 
      * This allows this type to be used as one of many mix-in bases. */
@@ -2910,6 +2913,7 @@ static int PyBuildableEntity_init(PyBuildableEntityObject *self, PyObject *args,
         return -1; /* Exception already set */
     Py_DECREF(ret);
     return 0;
+#endif
 
 fail_type:
     PyErr_SetString(PyExc_TypeError, 
@@ -3194,6 +3198,9 @@ static int PyBuilderEntity_init(PyBuilderEntityObject *self, PyObject *args, PyO
 
     G_Builder_SetBuildSpeed(self->super.ent, PyInt_AS_LONG(build_speed));
 
+#if PY_MAJOR_VERSION >= 3 && defined(__APPLE__) && defined(__aarch64__)
+    return 0;
+#else
     /* Call the next __init__ method in the MRO. This is required for all __init__ calls in the 
      * MRO to complete in cases when this class is one of multiple base classes of another type. 
      * This allows this type to be used as one of many mix-in bases. */
@@ -3202,6 +3209,7 @@ static int PyBuilderEntity_init(PyBuilderEntityObject *self, PyObject *args, PyO
         return -1; /* Exception already set */
     Py_DECREF(ret);
     return 0;
+#endif
 }
 
 static PyObject *PyBuilderEntity_build(PyBuilderEntityObject *self, PyObject *args)
@@ -3335,6 +3343,9 @@ static int PyResourceEntity_init(PyResourceEntityObject *self, PyObject *args, P
     G_Resource_SetName(self->super.ent, PyString_AS_STRING(name));
     G_Resource_SetAmount(self->super.ent, PyInt_AS_LONG(amount));
 
+#if PY_MAJOR_VERSION >= 3 && defined(__APPLE__) && defined(__aarch64__)
+    return 0;
+#else
     /* Call the next __init__ method in the MRO. This is required for all __init__ calls in the 
      * MRO to complete in cases when this class is one of multiple base classes of another type. 
      * This allows this type to be used as one of many mix-in bases. */
@@ -3343,6 +3354,7 @@ static int PyResourceEntity_init(PyResourceEntityObject *self, PyObject *args, P
         return -1; /* Exception already set */
     Py_DECREF(ret);
     return 0;
+#endif
 }
 
 static PyObject *PyResourceEntity_pickle(PyResourceEntityObject *self, PyObject *args, PyObject *kwargs)
@@ -4316,7 +4328,7 @@ static PyObject *PyGarrisonEntity_garrison(PyGarrisonEntityObject *self, PyObjec
         return NULL;
     }
 
-    if(!G_Garrison_Enter(self->super.ent, garrisonable->super.ent)) {
+    if(!G_Garrison_Enter(garrisonable->super.ent, self->super.ent)) {
         PyErr_SetString(PyExc_TypeError, "Unable to garrison inside specified "
             "pf.GarrisonableEntity instance.");
         return NULL;

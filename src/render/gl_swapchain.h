@@ -44,7 +44,7 @@ void R_GL_SwapchainShutdown(void);
 void R_GL_SwapchainSetRes(int *x, int *y);
 void R_GL_SwapchainAcquireNext(void);
 void R_GL_SwapchainFinishCommands(void);
-void R_GL_SwapchainPresentLast(void);
+void R_Cmd_SwapchainPresentLast(void);
 
 void R_GL_SwapchainPushRenderTarget(GLuint fbo);
 void R_GL_SwapchainPopRenderTarget(void);

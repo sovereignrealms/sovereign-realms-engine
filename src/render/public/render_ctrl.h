@@ -58,6 +58,7 @@ enum render_info{
     RENDER_INFO_VERSION,
     RENDER_INFO_SL_VERSION,
     RENDER_INFO_BACKEND,
+    RENDER_INFO_MSAA_SAMPLES,
 };
 
 struct render_init_arg{

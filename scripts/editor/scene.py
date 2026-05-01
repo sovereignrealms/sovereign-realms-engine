@@ -34,6 +34,7 @@
 
 from io import StringIO
 import os
+import sys
 
 try:
     from editor.constants import MODELS_PREFIX_DIR, pf
@@ -821,8 +822,7 @@ def save_scene_from_objects(filename, objects_list, factions_list=None):
         scenefile.write(dumps_scene_from_objects(objects_list, factions_list))
 
 def save_scene(filename):
-    try:
-        from editor import globals as editor_globals
-    except ImportError:
+    editor_globals = sys.modules.get("globals") or sys.modules.get("editor.globals")
+    if editor_globals is None:
         import globals as editor_globals
     save_scene_from_objects(filename, editor_globals.active_objects_list)

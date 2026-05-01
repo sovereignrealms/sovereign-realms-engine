@@ -418,7 +418,7 @@ void Perf_BeginTick(void)
         struct perf_entry *pe = &vec_AT(&gpu_ps->perf_trees[write_idx], i);
 
         R_PushCmd((struct rcmd){
-            .func = R_GL_TimestampForCookie,
+            .func = R_Cmd_TimestampForCookie,
             .nargs = 2,
             .args = {
                 &pe->begin.gpu_cookie,
@@ -426,7 +426,7 @@ void Perf_BeginTick(void)
             }
         });
         R_PushCmd((struct rcmd){
-            .func = R_GL_TimestampForCookie,
+            .func = R_Cmd_TimestampForCookie,
             .nargs = 2,
             .args = {
                 &pe->end.gpu_cookie,

@@ -192,7 +192,7 @@ static bool al_read_material(SDL_RWops *stream, const char *basedir, struct mate
     out->texname[sizeof(out->texname)-1] = '\0';
 
     R_PushCmd((struct rcmd){
-        .func = R_GL_Texture_GetOrLoad,
+        .func = R_Cmd_Texture_GetOrLoad,
         .nargs = 3,
         .args = {
             R_PushArg(basedir, strlen(basedir) + 1),
@@ -310,7 +310,7 @@ void *R_AL_PrivFromStream(const char *base_path, const struct pfobj_hdr *header,
 #endif
 
     R_PushCmd((struct rcmd){
-        .func = R_GL_Init,
+        .func = R_Cmd_Init,
         .nargs = 3,
         .args = {
             priv,
@@ -439,7 +439,7 @@ bool R_AL_InitPrivFromTiles(const struct map *map, int chunk_r, int chunk_c,
 
     const char *shader = "terrain-shadowed";
     R_PushCmd((struct rcmd){
-        .func = R_GL_Init,
+        .func = R_Cmd_Init,
         .nargs = 3,
         .args = {
             priv,

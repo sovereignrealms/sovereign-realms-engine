@@ -7,7 +7,13 @@ TYPE ?= DEBUG
 ASAN ?= 0
 TSAN ?= 0
 LTO  ?= 0
+
+ifeq ($(PLAT),MACOS_ARM64)
+RENDER_BACKEND ?= METAL
+else
 RENDER_BACKEND ?= OPENGL
+endif
+
 GIT_VERSION := "$(shell git describe --always 2>/dev/null || echo archive)"
 
 # ------------------------------------------------------------------------------
@@ -18,6 +24,9 @@ PF_DIRS = $(sort $(dir $(wildcard ./src/*/), ./src/))
 PF_SRCS = $(foreach dir,$(PF_DIRS),$(wildcard $(dir)*.c))
 PF_ASM = $(foreach dir,$(PF_DIRS),$(wildcard $(dir)*.S))
 PF_OBJC = $(foreach dir,$(PF_DIRS),$(wildcard $(dir)*.m))
+ifeq ($(RENDER_BACKEND),METAL)
+PF_SRCS := $(filter-out ./src/render/backend_gl.c,$(PF_SRCS))
+endif
 OBJ_DIR = ./obj/$(PLAT)-$(RENDER_BACKEND)
 PF_SRC_OBJS = $(PF_SRCS:./src/%.c=$(OBJ_DIR)/%.o)
 PF_ASM_OBJS = $(PF_ASM:./src/%.S=$(OBJ_DIR)/%.o)
@@ -259,10 +268,10 @@ endif
 ifeq ($(RENDER_BACKEND),METAL)
 BACKEND_METAL_DEF = 1
 ifeq ($(PLAT),MACOS_X86_64)
-BACKEND_PLAT_LDFLAGS = -framework OpenGL -framework Metal -framework QuartzCore -framework Foundation
+BACKEND_PLAT_LDFLAGS = -framework Metal -framework QuartzCore -framework Foundation -Wl,-dead_strip
 endif
 ifeq ($(PLAT),MACOS_ARM64)
-BACKEND_PLAT_LDFLAGS = -framework OpenGL -framework Metal -framework QuartzCore -framework Foundation
+BACKEND_PLAT_LDFLAGS = -framework Metal -framework QuartzCore -framework Foundation -Wl,-dead_strip
 endif
 endif
 
@@ -473,9 +482,6 @@ run_hfmp: pf
 
 run_editor:
 ifeq ($(PLAT),MACOS_X86_64)
-	@printf "%s\n" "run_editor is not supported on macOS during the current bring-up phase."
-	@false
-else ifeq ($(PLAT),MACOS_ARM64)
 	@printf "%s\n" "run_editor is not supported on macOS during the current bring-up phase."
 	@false
 else

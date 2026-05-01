@@ -471,7 +471,7 @@ size_t G_Pos_UploadFrom(khash_t(pos) *table, khash_t(id) *ent_gpu_id_table,
     });
 
     R_PushCmd((struct rcmd){
-        .func = R_GL_PositionsUploadData,
+        .func = R_Cmd_PositionsUploadData,
         .nargs = 4,
         .args = {
             buff,

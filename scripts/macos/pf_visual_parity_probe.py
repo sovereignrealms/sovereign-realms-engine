@@ -11,6 +11,7 @@ sys.path.insert(0, pf.get_basedir() + "/scripts")
 
 import rts.globals
 import rts.main as demo_main
+import rts.time_of_day as time_of_day
 
 
 ERROR_PATH = "/tmp/pf_visual_parity_probe_error.txt"
@@ -27,7 +28,9 @@ STATE = {
     "expected_backend": None,
     "water_stage": None,
     "capture_camera": None,
+    "skybox_camera": None,
     "frozen_anim_count": 0,
+    "splat_pairs": [],
 }
 
 
@@ -234,6 +237,19 @@ def _build_scenes():
             "target": _ent_xz(enemy),
             "selection": [enemy],
         })
+    if os.environ.get("PF_VISUAL_PARITY_INCLUDE_SKYBOX") == "1":
+        scenes.append({
+            "name": "skybox",
+            "target": _ent_xz(anchor),
+            "selection": [],
+            "camera": "skybox",
+        })
+    scene_filter = os.environ.get("PF_VISUAL_PARITY_SCENES")
+    if scene_filter:
+        wanted = set(name.strip() for name in scene_filter.split(",") if name.strip())
+        scenes = [scene for scene in scenes if scene["name"] in wanted]
+        if not scenes:
+            _fail("scene filter matched no scenes: {0}".format(scene_filter))
     return scenes
 
 
@@ -251,6 +267,37 @@ def _freeze_anim_poses():
         count += 1
     STATE["frozen_anim_count"] = count
     print("VISUAL_PARITY_ANIM_FREEZE count={0}".format(count))
+    sys.stdout.flush()
+
+
+def _apply_diagnostic_settings():
+    if os.environ.get("PF_VISUAL_PARITY_DISABLE_VSYNC") == "1":
+        pf.settings_set("pf.video.vsync", False, persist=False)
+    if os.environ.get("PF_VISUAL_PARITY_DISABLE_SHADOWS") == "1":
+        pf.settings_set("pf.video.shadows_enabled", False, persist=False)
+
+
+def _apply_splat_settings():
+    spec = os.environ.get("PF_VISUAL_PARITY_SPLAT_PAIRS", "").strip()
+    if not spec:
+        return
+    pairs = []
+    for token in spec.split(";"):
+        token = token.strip()
+        if not token:
+            continue
+        parts = token.split(":")
+        if len(parts) != 2:
+            _fail("invalid PF_VISUAL_PARITY_SPLAT_PAIRS token: {0}".format(token))
+        try:
+            base = int(parts[0])
+            accent = int(parts[1])
+        except ValueError:
+            _fail("invalid splat material index: {0}".format(token))
+        pf.map_add_splat(base, accent)
+        pairs.append({"base": base, "accent": accent})
+    STATE["splat_pairs"] = pairs
+    print("VISUAL_PARITY_SPLATS {0}".format(pairs))
     sys.stdout.flush()
 
 
@@ -276,6 +323,17 @@ def _ensure_capture_camera():
 def _place_camera_at_target(target):
     cam = _ensure_capture_camera()
     cam.center_over_location(target)
+
+
+def _place_skybox_camera(target):
+    if STATE["skybox_camera"] is None:
+        STATE["skybox_camera"] = pf.Camera(
+            mode=pf.CAM_MODE_FPS,
+            position=(target[0], 130.0, target[1]),
+            pitch=5.0,
+            yaw=135.0,
+        )
+    pf.set_active_camera(STATE["skybox_camera"])
 
 
 def _activate_own_window():
@@ -325,25 +383,51 @@ def _capture(scene):
     backend = pf.get_render_info().get("backend")
     filename = "{0}_{1}.png".format(backend.lower(), scene["name"])
     path = os.path.join(STATE["output_dir"], filename)
-    _activate_own_window()
-    window_id = _capture_window_id()
     ret = 1
-    if window_id is not None:
+    window_id = None
+    last_error = ""
+    for _ in range(5):
+        if os.environ.get("PF_VISUAL_PARITY_ACTIVATE_WINDOW") == "1":
+            _activate_own_window()
+        window_id = _capture_window_id()
+        if window_id is None:
+            last_error = "no window id"
+            time.sleep(0.15)
+            continue
         try:
-            ret = subprocess.run(["screencapture", "-x", "-o", "-l{0}".format(window_id), path],
-                                 timeout=3.0).returncode
+            capture = subprocess.run(
+                ["screencapture", "-x", "-o", "-l{0}".format(window_id), path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                timeout=3.0,
+            )
+            ret = capture.returncode
+            last_error = capture.stderr.strip()
+            if ret == 0:
+                break
         except subprocess.TimeoutExpired:
-            print("VISUAL_PARITY_CAPTURE_FALLBACK window-timeout {0}".format(scene["name"]))
-            sys.stdout.flush()
-    if ret != 0:
+            ret = 1
+            last_error = "timeout"
+        time.sleep(0.15)
+    if ret != 0 and os.environ.get("PF_VISUAL_PARITY_FULLSCREEN_FALLBACK") == "1":
         print("VISUAL_PARITY_CAPTURE_FALLBACK fullscreen {0}".format(scene["name"]))
         sys.stdout.flush()
         try:
-            ret = subprocess.run(["screencapture", "-x", "-o", path], timeout=3.0).returncode
+            ret = subprocess.run(
+                ["screencapture", "-x", "-o", path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=3.0,
+            ).returncode
         except subprocess.TimeoutExpired:
             ret = 1
     if ret != 0:
-        _fail("screencapture failed for {0}".format(scene["name"]))
+        _fail("screencapture failed for {0} window_id={1} stderr={2}".format(
+            scene["name"],
+            window_id,
+            last_error,
+        ))
     return path
 
 
@@ -355,6 +439,8 @@ def _write_summary():
         "backend": pf.get_render_info(),
         "records": STATE["records"],
         "frozen_anim_count": STATE["frozen_anim_count"],
+        "splat_pairs": STATE["splat_pairs"],
+        "lighting": time_of_day.current_state(),
     }
     with open(path, "w") as outfile:
         json.dump(payload, outfile, indent=2, sort_keys=True)
@@ -388,7 +474,10 @@ def _start_scene():
 
     scene = STATE["scenes"][STATE["scene_idx"]]
     pf.set_unit_selection(scene["selection"])
-    _place_camera_at_target(scene["target"])
+    if scene.get("camera") == "skybox":
+        _place_skybox_camera(scene["target"])
+    else:
+        _place_camera_at_target(scene["target"])
     STATE["samples"] = []
     STATE["water_stage"] = None
     if scene.get("stage_water_units"):
@@ -428,6 +517,8 @@ def on_update(user, event):
         backend = pf.get_render_info().get("backend")
         if STATE["expected_backend"] and backend != STATE["expected_backend"]:
             _fail("expected {0} backend, got {1}".format(STATE["expected_backend"], backend))
+        _apply_diagnostic_settings()
+        _apply_splat_settings()
         pf.set_simstate(pf.G_PAUSED_UI_RUNNING)
         _freeze_anim_poses()
         STATE["scenes"] = _build_scenes()

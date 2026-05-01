@@ -57,6 +57,7 @@
 
 #include <inttypes.h>
 #include <assert.h>
+#include <stdlib.h>
 
 
 #define MESH_BUFF_SZ        (16*1024*1024)
@@ -1419,6 +1420,16 @@ static void batch_render_anim_all(vec_ranim_t *ents, bool shadows, enum render_p
     if(nanim == 0)
         return;
 
+    if(pass == RENDER_PASS_DEPTH) {
+        size_t verts = 0;
+        for(int i = 0; i < nanim; i++) {
+            struct render_private *priv = vec_AT(ents, i).render_private;
+            if(priv)
+                verts += priv->mesh.num_verts;
+        }
+        R_GL_ShadowStatsAddAnim((unsigned)nanim, verts);
+    }
+
     switch(pass) {
     case RENDER_PASS_DEPTH:
         R_GL_Shader_Install("batched.mesh.animated.depth");
@@ -1464,6 +1475,19 @@ static void batch_render_stat_all(vec_rstat_t *ents, bool shadows,
 
     if(nbatches == 0)
         return;
+
+    if(pass == RENDER_PASS_DEPTH) {
+        size_t draws = 0;
+        size_t verts = 0;
+        for(int i = 0; i < vec_size(ents); i++) {
+            struct render_private *priv = vec_AT(ents, i).render_private;
+            if(priv) {
+                draws++;
+                verts += priv->mesh.num_verts;
+            }
+        }
+        R_GL_ShadowStatsAddStatic((unsigned)draws, verts);
+    }
 
     switch(pass) {
     case RENDER_PASS_DEPTH:
@@ -1591,7 +1615,7 @@ void R_GL_Batch_Shutdown(void)
     glDeleteBuffers(1, &s_draw_id_vbo);
 }
 
-void R_GL_Batch_Draw(struct render_input *in)
+void R_GL_Batch_Draw_Impl(struct render_input *in)
 {
     GL_PERF_ENTER();
     GL_PERF_PUSH_GROUP(0, "batch::Draw");
@@ -1603,7 +1627,7 @@ void R_GL_Batch_Draw(struct render_input *in)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_Batch_DrawWithID(struct render_input *in, enum batch_id *id)
+void R_GL_Batch_DrawWithID_Impl(struct render_input *in, enum batch_id *id)
 {
     GL_PERF_ENTER();
     GL_PERF_PUSH_GROUP(0, "batch::DrawWithID");
@@ -1615,19 +1639,21 @@ void R_GL_Batch_DrawWithID(struct render_input *in, enum batch_id *id)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_Batch_RenderDepthMap(struct render_input *in)
+void R_GL_Batch_RenderDepthMap_Impl(struct render_input *in)
 {
     GL_PERF_ENTER();
     GL_PERF_PUSH_GROUP(0, "batch::RenderDepthMap");
 
-    batch_render_anim_all(&in->light_vis_anim, true, RENDER_PASS_DEPTH);
-    batch_render_stat_all(&in->light_vis_stat, true, RENDER_PASS_DEPTH, BATCH_ID_NULL);
+    if(!getenv("PF_SHADOW_SKIP_ANIM"))
+        batch_render_anim_all(&in->light_vis_anim, true, RENDER_PASS_DEPTH);
+    if(!getenv("PF_SHADOW_SKIP_STATIC"))
+        batch_render_stat_all(&in->light_vis_stat, true, RENDER_PASS_DEPTH, BATCH_ID_NULL);
 
     GL_PERF_POP_GROUP();
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_Batch_Reset(void)
+void R_GL_Batch_Reset_Impl(void)
 {
     uint32_t key;
     struct gl_batch *curr;
@@ -1642,7 +1668,7 @@ void R_GL_Batch_Reset(void)
     s_anim_batch = batch_init(BATCH_TYPE_ANIM);
 }
 
-void R_GL_Batch_AllocChunks(struct map_resolution *res)
+void R_GL_Batch_AllocChunks_Impl(struct map_resolution *res)
 {
     GL_PERF_ENTER();
 

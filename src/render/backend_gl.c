@@ -139,6 +139,300 @@ static void debug_callback(GLenum source, GLenum type, GLuint id, GLenum severit
 
 static void render_dispatch_cmd(struct rcmd cmd)
 {
+    if(cmd.func == R_Cmd_Init) {
+        R_GL_Init_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_BeginFrame) {
+        R_GL_BeginFrame_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_EndFrame) {
+        R_GL_EndFrame_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_SetViewMatAndPos) {
+        R_GL_SetViewMatAndPos_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_SetProj) {
+        R_GL_SetProj_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_SetAmbientLightColor) {
+        R_GL_SetAmbientLightColor_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_SetLightEmitColor) {
+        R_GL_SetLightEmitColor_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_SetLightPos) {
+        R_GL_SetLightPos_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_Draw) {
+        R_GL_Draw_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DepthPassBegin) {
+        R_GL_DepthPassBegin_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DepthPassEnd) {
+        R_GL_DepthPassEnd_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_RenderDepthMap) {
+        R_GL_RenderDepthMap_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_SetShadowsEnabled) {
+        R_GL_SetShadowsEnabled_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_Batch_Draw) {
+        R_GL_Batch_Draw_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_Batch_DrawWithID) {
+        R_GL_Batch_DrawWithID_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_Batch_RenderDepthMap) {
+        R_GL_Batch_RenderDepthMap_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_Batch_Reset) {
+        R_GL_Batch_Reset_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_Batch_AllocChunks) {
+        R_GL_Batch_AllocChunks_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_AnimAppendData) {
+        R_GL_AnimAppendData_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_AnimSetUniforms) {
+        R_GL_AnimSetUniforms_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_SpriteRenderBatch) {
+        R_GL_SpriteRenderBatch_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_Init) {
+        R_GL_UI_Init_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_Shutdown) {
+        R_GL_UI_Shutdown_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_Render) {
+        R_GL_UI_Render_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_UploadFontAtlas) {
+        R_GL_UI_UploadFontAtlas_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_TileDrawSelected) {
+        R_GL_TileDrawSelected_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_TilePatchVertsBlend) {
+        R_TilePatchVertsBlend_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_TilePatchVertsSmooth) {
+        R_TilePatchVertsSmooth_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_TileUpdate) {
+        R_TileUpdate_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MapInit) {
+        R_GL_MapInit_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MapShutdown) {
+        R_GL_MapShutdown_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_MapBegin) {
+        R_GL_MapBegin_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4], cmd.args[5]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MapEnd) {
+        R_GL_MapEnd_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_MapUpdateFog) {
+        R_GL_MapUpdateFog_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MapInvalidate) {
+        R_GL_MapInvalidate_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_Texture_GetOrLoad) {
+        R_GL_Texture_GetOrLoad_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_PositionsUploadData) {
+        R_GL_PositionsUploadData_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+        return;
+    }
+    if(cmd.func == R_Cmd_PositionsInvalidateData) {
+        R_GL_PositionsInvalidateData_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_MoveUpdateUniforms) {
+        R_GL_MoveUpdateUniforms_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MoveUploadData) {
+        R_GL_MoveUploadData_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4],
+                                 cmd.args[5], cmd.args[6], cmd.args[7], cmd.args[8], cmd.args[9]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MoveInvalidateData) {
+        R_GL_MoveInvalidateData_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_MoveDispatchWork) {
+        R_GL_MoveDispatchWork_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MoveReadNewVelocities) {
+        R_GL_MoveReadNewVelocities_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MovePollCompletion) {
+        R_GL_MovePollCompletion_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MoveClearState) {
+        R_GL_MoveClearState_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_WaterInit) {
+        R_GL_WaterInit_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_WaterShutdown) {
+        R_GL_WaterShutdown_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_SkyboxLoad) {
+        R_GL_SkyboxLoad_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_SkyboxFree) {
+        R_GL_SkyboxFree_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawSkybox) {
+        R_GL_DrawSkybox_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawWater) {
+        R_GL_DrawWater_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MinimapBake) {
+        R_GL_MinimapBake_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MinimapUpdateChunk) {
+        R_GL_MinimapUpdateChunk_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MinimapRender) {
+        R_GL_MinimapRender_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MinimapRenderUnits) {
+        R_GL_MinimapRenderUnits_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4], cmd.args[5]);
+        return;
+    }
+    if(cmd.func == R_Cmd_MinimapFree) {
+        R_GL_MinimapFree_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_SetScreenspaceDrawMode) {
+        R_GL_SetScreenspaceDrawMode_Impl();
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawLoadingScreen) {
+        R_GL_DrawLoadingScreen_Impl(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawBox2D) {
+        R_GL_DrawBox2D_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawLine) {
+        R_GL_DrawLine_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawQuad) {
+        R_GL_DrawQuad_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawOrigin) {
+        R_GL_DrawOrigin_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawRay) {
+        R_GL_DrawRay_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawOBB) {
+        R_GL_DrawOBB_Impl(cmd.args[0], cmd.args[1]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawSelectionCircle) {
+        R_GL_DrawSelectionCircle_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawSelectionRectangle) {
+        R_GL_DrawSelectionRectangle_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawMapOverlayQuads) {
+        R_GL_DrawMapOverlayQuads_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4], cmd.args[5]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawFlowField) {
+        R_GL_DrawFlowField_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawCombinedHRVO) {
+        R_GL_DrawCombinedHRVO_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawHealthbars) {
+        R_GL_DrawHealthbars_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawSkeleton) {
+        R_GL_DrawSkeleton_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawModelToTexture) {
+        R_GL_DrawModelToTexture_Impl(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+        return;
+    }
+    if(cmd.func == R_Cmd_DrawNormals) {
+        R_GL_DrawNormals_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+
     switch(cmd.nargs) {
     case 0:  ((void(*)(void))cmd.func)(); break;
     case 1:  ((void(*)(void*))cmd.func)(cmd.args[0]); break;
@@ -274,7 +568,7 @@ static int render(void *data)
 
         render_process_cmds(&G_GetRenderWS()->commands);
         if(s_rstate->swap_buffers) {
-            R_GL_SwapchainPresentLast();
+            R_Cmd_SwapchainPresentLast();
 #if defined(__APPLE__) && defined(__aarch64__)
             render_signal_done(s_rstate, RSTAT_YIELD);
 #endif
@@ -348,6 +642,7 @@ const char *R_GL_Backend_GetInfo(enum render_info attr)
     case RENDER_INFO_VERSION:    return s_info_version;
     case RENDER_INFO_SL_VERSION: return s_info_sl_version;
     case RENDER_INFO_BACKEND:    return "OPENGL";
+    case RENDER_INFO_MSAA_SAMPLES: return "1";
     default: assert(0); return NULL;
     }
 }

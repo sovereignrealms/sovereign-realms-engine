@@ -60,6 +60,8 @@ static CAMetalLayer             *s_layer;
 
 static id<MTLRenderPipelineState> s_ui_pipeline;
 static id<MTLRenderPipelineState> s_ui_msaa_pipeline;
+static id<MTLRenderPipelineState> s_minimap_pipeline;
+static id<MTLRenderPipelineState> s_minimap_msaa_pipeline;
 static id<MTLRenderPipelineState> s_terrain_pipeline;
 static id<MTLRenderPipelineState> s_terrain_msaa_pipeline;
 static id<MTLRenderPipelineState> s_terrain_depth_pipeline;
@@ -78,20 +80,27 @@ static id<MTLRenderPipelineState> s_world_color_depth_pipeline;
 static id<MTLRenderPipelineState> s_world_color_depth_msaa_pipeline;
 static id<MTLRenderPipelineState> s_shadow_terrain_pipeline;
 static id<MTLRenderPipelineState> s_shadow_mesh_pipeline;
+static id<MTLRenderPipelineState> s_shadow_owner_terrain_pipeline;
+static id<MTLRenderPipelineState> s_shadow_owner_mesh_pipeline;
 static id<MTLRenderPipelineState> s_water_surface_pipeline;
 static id<MTLRenderPipelineState> s_water_surface_msaa_pipeline;
 static id<MTLRenderPipelineState> s_skybox_pipeline;
 static id<MTLRenderPipelineState> s_skybox_msaa_pipeline;
+static id<MTLRenderPipelineState> s_sprite_pipeline;
+static id<MTLRenderPipelineState> s_sprite_msaa_pipeline;
 static id<MTLDepthStencilState>   s_depth_write_state;
 static id<MTLDepthStencilState>   s_depth_read_state;
 static id<MTLSamplerState>       s_ui_sampler;
+static id<MTLSamplerState>       s_minimap_sampler;
 static id<MTLSamplerState>       s_scene_sampler;
 static id<MTLSamplerState>       s_material_sampler;
 static id<MTLSamplerState>       s_terrain_sampler;
 static id<MTLSamplerState>       s_shadow_sampler;
 static id<MTLSamplerState>       s_skybox_sampler;
+static id<MTLSamplerState>       s_sprite_sampler;
 static id<MTLTexture>            s_ui_font_texture;
 static NSMutableDictionary      *s_ui_texpath_cache;
+static NSMutableDictionary      *s_sprite_texpath_cache;
 static id<MTLTexture>            s_pending_ui_texture;
 static id<MTLTexture>            s_minimap_texture;
 static id<MTLTexture>            s_terrain_texture_array;
@@ -101,6 +110,8 @@ static id<MTLTexture>            s_water_normal_texture;
 static id<MTLTexture>            s_frame_msaa_texture;
 static id<MTLTexture>            s_frame_depth_texture;
 static id<MTLTexture>            s_shadow_depth_texture;
+static id<MTLTexture>            s_shadow_owner_texture;
+static id<MTLTexture>            s_shadow_owner_dummy_texture;
 static id<MTLTexture>            s_water_reflection_texture;
 static id<MTLTexture>            s_water_reflection_depth_texture;
 static id<MTLTexture>            s_water_refraction_texture;
@@ -108,7 +119,13 @@ static id<MTLTexture>            s_water_refraction_depth_texture;
 static id<MTLBuffer>             s_fog_buffer;
 static id<MTLBuffer>             s_water_buffer;
 static id<MTLBuffer>             s_heightmap_buffer;
+static id<MTLBuffer>             s_splatmap_buffer;
+static id<MTLBuffer>             s_splat_indices_buffer;
 static id<MTLBuffer>             s_skybox_vertex_buffer;
+static id<MTLBuffer>             s_shadow_screen_probe_buffer;
+static id<MTLBuffer>             s_shadow_screen_probe_params_buffer;
+static id<MTLBuffer>             s_shadow_screen_probe_disabled_params_buffer;
+static id<MTLBuffer>             s_water_reflection_dump_buffer;
 
 static id<CAMetalDrawable>       s_frame_drawable;
 static id<MTLCommandBuffer>      s_frame_command_buffer;
@@ -122,6 +139,7 @@ static char s_info_vendor[128];
 static char s_info_renderer[128];
 static char s_info_version[128];
 static char s_info_sl_version[128];
+static char s_info_msaa_samples[16];
 static matrix_float4x4 s_scene_view;
 static matrix_float4x4 s_scene_proj;
 static matrix_float4x4 s_shadow_light_space;
@@ -134,9 +152,19 @@ static vector_float3   s_light_pos = {1.0f, 1.0f, 1.0f};
 static bool            s_have_scene_view;
 static bool            s_have_scene_proj;
 static bool            s_shadow_pass_active;
+static bool            s_shadow_owner_pass_active;
 static bool            s_water_scene_pass_active;
+static bool            s_minimap_bake_pass_active;
 static bool            s_shadow_map_valid;
 static bool            s_shadows_enabled;
+static struct {
+    unsigned terrain_draws;
+    unsigned static_draws;
+    unsigned anim_draws;
+    size_t terrain_verts;
+    size_t static_verts;
+    size_t anim_verts;
+} s_shadow_caster_stats;
 static int             s_water_scene_clip_mode;
 static NSUInteger      s_frame_sample_count;
 static bool            s_frame_inflight_reserved;
@@ -153,6 +181,17 @@ static bool            s_raw_material_debug_env_checked;
 static bool            s_raw_material_debug_enabled;
 static bool            s_msaa_env_checked;
 static NSUInteger      s_requested_sample_count;
+static bool            s_shadow_screen_probe_env_checked;
+static bool            s_shadow_screen_probe_enabled;
+static uint32_t        s_shadow_screen_probe_x;
+static uint32_t        s_shadow_screen_probe_y;
+static uint32_t        s_shadow_screen_probe_radius;
+static char            s_shadow_screen_probe_output_path[PATH_MAX];
+static bool            s_water_reflection_dump_pending;
+static NSUInteger      s_water_reflection_dump_width;
+static NSUInteger      s_water_reflection_dump_height;
+static NSUInteger      s_water_reflection_dump_bpr;
+static char            s_water_reflection_dump_path[PATH_MAX];
 static uint32_t        s_curr_anim_uid;
 static bool            s_have_anim_uid;
 static matrix_float4x4 s_curr_anim_normal_transform;
@@ -167,17 +206,22 @@ static uint32_t        s_water_prev_frame_tick;
 
 #define METAL_MAX_JOINTS 256
 #define METAL_MINIMAP_RES 1024
-#define METAL_DEFAULT_MSAA_SAMPLES 1
-#define METAL_MAX_MSAA_SAMPLES 4
+#define METAL_DEFAULT_MSAA_SAMPLES 4
+#define METAL_MAX_MSAA_SAMPLES 8
 #define METAL_LIGHT_EXTRA_HEIGHT 300.0f
+#define METAL_SHADOW_OWNER_TERRAIN_UID 0xffffffffu
+#define METAL_SHADOW_OWNER_UNKNOWN_UID 0xfffffffeu
 #define METAL_WATER_LEVEL (-1.0f * Y_COORDS_PER_TILE + 2.0f)
 #define METAL_WATER_WAVE_SPEED 0.015f
 #define METAL_WATER_DUDV_PATH "assets/water_textures/dudvmap.png"
 #define METAL_WATER_NORMAL_PATH "assets/water_textures/normalmap.png"
 #define METAL_HEIGHT_MAP_RES 2048
+#define METAL_SPLAT_MAP_RES 1024
 #define METAL_WATER_CLIP_NONE 0
 #define METAL_WATER_CLIP_KEEP_BELOW 1
 #define METAL_WATER_CLIP_KEEP_ABOVE 2
+#define METAL_MAX_SPRITES 1024
+#define METAL_MAX_SPRITE_DRAWS 512
 
 static const char *s_ui_shader_source =
 "#include <metal_stdlib>\n"
@@ -209,9 +253,175 @@ static const char *s_ui_shader_source =
 "    return in.color * tex.sample(tex_sampler, in.uv);\n"
 "}\n";
 
+static const char *s_minimap_shader_source =
+"#include <metal_stdlib>\n"
+"using namespace metal;\n"
+"struct UIUniforms {\n"
+"    float2 view_size;\n"
+"};\n"
+"struct MinimapUniforms {\n"
+"    uint2 chunk_size;\n"
+"    uint2 tiles_per_chunk;\n"
+"    uint fog_enabled;\n"
+"};\n"
+"struct VertexIn {\n"
+"    float2 position [[attribute(0)]];\n"
+"    float2 uv [[attribute(1)]];\n"
+"    float4 color [[attribute(2)]];\n"
+"};\n"
+"struct VertexOut {\n"
+"    float4 position [[position]];\n"
+"    float2 uv;\n"
+"    float4 color;\n"
+"};\n"
+"vertex VertexOut minimap_vertex(VertexIn in [[stage_in]], constant UIUniforms &uniforms [[buffer(1)]]) {\n"
+"    VertexOut out;\n"
+"    float2 ndc;\n"
+"    ndc.x = (in.position.x / uniforms.view_size.x) * 2.0 - 1.0;\n"
+"    ndc.y = 1.0 - (in.position.y / uniforms.view_size.y) * 2.0;\n"
+"    out.position = float4(ndc, 0.0, 1.0);\n"
+"    out.uv = in.uv;\n"
+"    out.color = in.color;\n"
+"    return out;\n"
+"}\n"
+"static uint minimap_visbuff_idx(float2 uv, uint2 chunk_size, uint2 tiles_per_chunk) {\n"
+"    uint tile_w = max(tiles_per_chunk.x, 1u);\n"
+"    uint tile_h = max(tiles_per_chunk.y, 1u);\n"
+"    uint total_w = max(chunk_size.x, 1u) * tile_w;\n"
+"    uint total_h = max(chunk_size.y, 1u) * tile_h;\n"
+"    float2 clamped = clamp(uv, float2(0.0), float2(0.999999));\n"
+"    uint abs_c = min(uint(clamped.x * float(total_w)), total_w - 1u);\n"
+"    uint abs_r = min(uint(clamped.y * float(total_h)), total_h - 1u);\n"
+"    uint chunk_c = abs_c / tile_w;\n"
+"    uint chunk_r = abs_r / tile_h;\n"
+"    uint tile_c = abs_c - chunk_c * tile_w;\n"
+"    uint tile_r = abs_r - chunk_r * tile_h;\n"
+"    uint tiles_per_chunk_count = tile_w * tile_h;\n"
+"    return chunk_r * (chunk_size.x * tiles_per_chunk_count)\n"
+"         + chunk_c * tiles_per_chunk_count\n"
+"         + tile_r * tile_w\n"
+"         + tile_c;\n"
+"}\n"
+"fragment float4 minimap_fragment(VertexOut in [[stage_in]], constant MinimapUniforms &uniforms [[buffer(1)]], device const uchar *fog_buff [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler tex_sampler [[sampler(0)]]) {\n"
+"    float4 color = in.color * tex.sample(tex_sampler, in.uv);\n"
+"    if(uniforms.fog_enabled == 0u || uniforms.chunk_size.x == 0u || uniforms.chunk_size.y == 0u)\n"
+"        return color;\n"
+"    uint state = fog_buff[minimap_visbuff_idx(in.uv, uniforms.chunk_size, uniforms.tiles_per_chunk)];\n"
+"    if(state == 0u)\n"
+"        return float4(0.0, 0.0, 0.0, color.a);\n"
+"    if(state == 1u)\n"
+"        color.rgb *= 0.5;\n"
+"    return color;\n"
+"}\n";
+
+static const char *s_sprite_shader_source =
+"#include <metal_stdlib>\n"
+"using namespace metal;\n"
+"struct SpriteUniforms {\n"
+"    float4x4 view;\n"
+"    float4x4 projection;\n"
+"    float3 view_dir;\n"
+"    uint sprite_nrows;\n"
+"    uint sprite_ncols;\n"
+"};\n"
+"struct SpriteDesc {\n"
+"    packed_float3 ws_pos;\n"
+"    float pad0;\n"
+"    packed_float2 ws_size;\n"
+"    uint frame_idx;\n"
+"    float pad1;\n"
+"};\n"
+"struct SpriteOut {\n"
+"    float4 position [[position]];\n"
+"    float2 uv;\n"
+"    uint frame [[flat]];\n"
+"};\n"
+"vertex SpriteOut sprite_vertex(uint vid [[vertex_id]], uint iid [[instance_id]], constant SpriteUniforms &uniforms [[buffer(0)]], device const SpriteDesc *sprites [[buffer(1)]]) {\n"
+"    constexpr float3 quad_pos[6] = {\n"
+"        float3(-1.0, -1.0, 0.0), float3(-1.0,  1.0, 0.0), float3( 1.0,  1.0, 0.0),\n"
+"        float3( 1.0,  1.0, 0.0), float3( 1.0, -1.0, 0.0), float3(-1.0, -1.0, 0.0)\n"
+"    };\n"
+"    constexpr float2 quad_uv[6] = {\n"
+"        float2(1.0, 0.0), float2(1.0, 1.0), float2(0.0, 1.0),\n"
+"        float2(0.0, 1.0), float2(0.0, 0.0), float2(1.0, 0.0)\n"
+"    };\n"
+"    SpriteDesc desc = sprites[iid];\n"
+"    float3 view_dir = normalize(uniforms.view_dir);\n"
+"    float3 xz = float3(view_dir.z, 0.0, -view_dir.x);\n"
+"    if(dot(xz, xz) < 0.00001)\n"
+"        xz = float3(1.0, 0.0, 0.0);\n"
+"    float3 cam_up = normalize(cross(view_dir, xz));\n"
+"    float3 cam_right = normalize(cross(view_dir, cam_up));\n"
+"    float3 center = float3(desc.ws_pos);\n"
+"    float2 size = float2(desc.ws_size);\n"
+"    float3 pos = center\n"
+"        + cam_right * quad_pos[vid].x * (size.x * 0.5)\n"
+"        + cam_up * quad_pos[vid].y * (size.y * 0.5);\n"
+"    SpriteOut out;\n"
+"    out.position = uniforms.projection * uniforms.view * float4(pos, 1.0);\n"
+"    out.uv = quad_uv[vid];\n"
+"    out.frame = desc.frame_idx;\n"
+"    return out;\n"
+"}\n"
+"static float4 sprite_texture(texture2d<float> sprite_sheet, sampler sprite_sampler, uint frame_idx, uint nrows, uint ncols, float2 uv) {\n"
+"    nrows = max(nrows, 1u);\n"
+"    ncols = max(ncols, 1u);\n"
+"    uint row = frame_idx / ncols;\n"
+"    row = (nrows - 1u) - min(row, nrows - 1u);\n"
+"    uint col = frame_idx % ncols;\n"
+"    float width = float(sprite_sheet.get_width());\n"
+"    float height = float(sprite_sheet.get_height());\n"
+"    float row_height = floor(height / float(nrows));\n"
+"    float col_width = floor(width / float(ncols));\n"
+"    float u_offset = float(col) * col_width;\n"
+"    float v_offset = float(row) * row_height;\n"
+"    float2 sample_uv = float2((u_offset + uv.x * col_width) / width,\n"
+"                              (v_offset + uv.y * row_height) / height);\n"
+"    return sprite_sheet.sample(sprite_sampler, sample_uv);\n"
+"}\n"
+"fragment float4 sprite_fragment(SpriteOut in [[stage_in]], constant SpriteUniforms &uniforms [[buffer(0)]], texture2d<float> sprite_sheet [[texture(0)]], sampler sprite_sampler [[sampler(0)]]) {\n"
+"    float4 color = sprite_texture(sprite_sheet, sprite_sampler, in.frame, uniforms.sprite_nrows, uniforms.sprite_ncols, in.uv);\n"
+"    if(color.a <= 0.5)\n"
+"        discard_fragment();\n"
+"    return color;\n"
+"}\n";
+
 static const char *s_terrain_shader_source =
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
+"static uint float_bits(float v) { return as_type<uint>(v); }\n"
+"static void shadow_screen_probe_write(float4 frag_pos, float4 light_space_pos, float3 world_pos, uint material_idx, uint surface_kind, float bias, texture2d<uint> owner_map, depth2d<float> shadow_map, sampler shadow_sampler, device atomic_uint *probe_out, constant uint4 &probe_params) {\n"
+"    if(probe_params.x == 0u) return;\n"
+"    int dx = int(frag_pos.x) - int(probe_params.y);\n"
+"    int dy = int(frag_pos.y) - int(probe_params.z);\n"
+"    int radius = int(probe_params.w);\n"
+"    if(abs(dx) > radius || abs(dy) > radius) return;\n"
+"    float w = max(abs(light_space_pos.w), 0.0001);\n"
+"    float2 proj_ndc = light_space_pos.xy / w;\n"
+"    float2 proj_xy = float2(proj_ndc.x * 0.5 + 0.5, 0.5 - proj_ndc.y * 0.5);\n"
+"    float proj_z = light_space_pos.z / w;\n"
+"    uint valid = (proj_xy.x >= 0.0 && proj_xy.y >= 0.0 && proj_xy.x <= 1.0 && proj_xy.y <= 1.0 && proj_z >= 0.0 && proj_z <= 0.95) ? 1u : 0u;\n"
+"    uint2 dims = uint2(owner_map.get_width(), owner_map.get_height());\n"
+"    uint2 texel = uint2(clamp(proj_xy, float2(0.0), float2(0.999999)) * float2(dims));\n"
+"    uint owner = valid ? owner_map.read(texel).r : 0u;\n"
+"    float closest_depth = valid ? shadow_map.sample(shadow_sampler, proj_xy) : 1.0;\n"
+"    atomic_store_explicit(&probe_out[0], 1u, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[1], uint(frag_pos.x), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[2], uint(frag_pos.y), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[3], texel.x, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[4], texel.y, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[5], owner, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[6], surface_kind, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[7], valid, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[8], float_bits(proj_z), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[9], float_bits(closest_depth), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[10], float_bits(world_pos.x), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[11], float_bits(world_pos.y), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[12], float_bits(world_pos.z), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[13], material_idx, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[14], float_bits(proj_z - bias), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[15], (valid && (proj_z - bias > closest_depth)) ? 1u : 0u, memory_order_relaxed);\n"
+"}\n"
 "struct TerrainVertexIn {\n"
 "    float3 position [[attribute(0)]];\n"
 "    float2 uv [[attribute(1)]];\n"
@@ -353,7 +563,8 @@ static const char *s_terrain_shader_source =
 "}\n"
 "static float shadow_factor(float4 light_space_pos, float3 normal, float3 light_dir, depth2d<float> shadow_map, sampler shadow_sampler, float base_bias, float texel_radius) {\n"
 "    float w = max(abs(light_space_pos.w), 0.0001);\n"
-"    float2 proj_xy = (light_space_pos.xy / w) * 0.5 + 0.5;\n"
+"    float2 proj_ndc = light_space_pos.xy / w;\n"
+"    float2 proj_xy = float2(proj_ndc.x * 0.5 + 0.5, 0.5 - proj_ndc.y * 0.5);\n"
 "    float  proj_z  = light_space_pos.z / w;\n"
 "    if(proj_xy.x < 0.0 || proj_xy.y < 0.0\n"
 "       || proj_xy.x > 1.0 || proj_xy.y > 1.0\n"
@@ -362,10 +573,10 @@ static const char *s_terrain_shader_source =
 "    float closest_depth = shadow_map.sample(shadow_sampler, proj_xy);\n"
 "    float shadow = (current_depth - base_bias > closest_depth) ? 1.0 : 0.0;\n"
 "    float visibility = 1.0;\n"
-"    float2 poisson0 = float2(-0.94201624, -0.39906216);\n"
-"    float2 poisson1 = float2( 0.94558609, -0.76890725);\n"
-"    float2 poisson2 = float2(-0.094184101, -0.92938870);\n"
-"    float2 poisson3 = float2( 0.34495938,  0.29387760);\n"
+"    float2 poisson0 = float2(-0.94201624,  0.39906216);\n"
+"    float2 poisson1 = float2( 0.94558609,  0.76890725);\n"
+"    float2 poisson2 = float2(-0.094184101,  0.92938870);\n"
+"    float2 poisson3 = float2( 0.34495938, -0.29387760);\n"
 "    float depth0 = shadow_map.sample(shadow_sampler, proj_xy + poisson0 / 256.0);\n"
 "    float depth1 = shadow_map.sample(shadow_sampler, proj_xy + poisson1 / 256.0);\n"
 "    float depth2 = shadow_map.sample(shadow_sampler, proj_xy + poisson2 / 256.0);\n"
@@ -411,7 +622,7 @@ static const char *s_terrain_shader_source =
 "static uint terrain_packed_idx(uint packed, uint shift) {\n"
 "    return (packed >> shift) & 0xffu;\n"
 "}\n"
-"static float4 terrain_texture_val(uint mat_idx, uint wang_idx, float2 uv, uint texture_count, texture2d_array<float> terrain_textures, sampler terrain_sampler) {\n"
+"static float4 terrain_texture_val_raw(uint mat_idx, uint wang_idx, float2 uv, uint texture_count, texture2d_array<float> terrain_textures, sampler terrain_sampler) {\n"
 "    uint layer = (mat_idx * 8u) + min(wang_idx, 7u);\n"
 "    if(layer < texture_count) {\n"
 "        return terrain_textures.sample(terrain_sampler, float2(uv.x, 1.0 - uv.y), layer, bias(-0.5));\n"
@@ -421,12 +632,37 @@ static const char *s_terrain_shader_source =
 "    }\n"
 "    return float4(terrain_material_color(mat_idx), 1.0);\n"
 "}\n"
-"static float4 terrain_mixed_texture_val(uint2 adjacency_mats, uint wang_idx, float2 uv, uint texture_count, texture2d_array<float> terrain_textures, sampler terrain_sampler) {\n"
+"static float terrain_splat_alpha_at_pos(float3 ws_pos, constant TerrainUniforms &uniforms, device const float *splat_map) {\n"
+"    float chunk_x_dist = uniforms.tile_world_size.x * float(max(uniforms.tiles_per_chunk.x, 1u));\n"
+"    float chunk_z_dist = uniforms.tile_world_size.y * float(max(uniforms.tiles_per_chunk.y, 1u));\n"
+"    int chunk_c = int(fabs(uniforms.map_pos.x - ws_pos.x) / chunk_x_dist);\n"
+"    int chunk_r = int(fabs(uniforms.map_pos.y - ws_pos.z) / chunk_z_dist);\n"
+"    float chunk_base_x = uniforms.map_pos.x - (float(chunk_c) * chunk_x_dist);\n"
+"    float chunk_base_z = uniforms.map_pos.y + (float(chunk_r) * chunk_z_dist);\n"
+"    float percentu = clamp((chunk_base_x - ws_pos.x) / chunk_x_dist, 0.0, 1.0);\n"
+"    float percentv = clamp((ws_pos.z - chunk_base_z) / chunk_z_dist, 0.0, 1.0);\n"
+"    int res = max(int(uniforms.terrain_params.w + 0.5), 2);\n"
+"    int count = res * res;\n"
+"    int buffx = int(percentu * float(res - 1));\n"
+"    int buffy = int(percentv * float(res - 1));\n"
+"    int idx = clamp(buffx * res + buffy, 0, count - 1);\n"
+"    return clamp(splat_map[idx] + 0.2, 0.0, 1.0);\n"
+"}\n"
+"static float4 terrain_texture_val(uint mat_idx, uint wang_idx, float2 uv, float3 world_pos, constant TerrainUniforms &uniforms, device const float *splat_map, device const int *splats, uint texture_count, texture2d_array<float> terrain_textures, sampler terrain_sampler) {\n"
+"    float4 tex_color = terrain_texture_val_raw(mat_idx, wang_idx, uv, texture_count, terrain_textures, terrain_sampler);\n"
+"    if(uniforms.terrain_params.w <= 0.5 || mat_idx >= 256u) return tex_color;\n"
+"    int splat_idx = splats[mat_idx];\n"
+"    if(splat_idx < 0) return tex_color;\n"
+"    float splat_alpha = terrain_splat_alpha_at_pos(world_pos, uniforms, splat_map);\n"
+"    float4 splat_color = terrain_texture_val_raw(uint(splat_idx), wang_idx, uv, texture_count, terrain_textures, terrain_sampler);\n"
+"    return mix(splat_color, tex_color, 1.0 - splat_alpha);\n"
+"}\n"
+"static float4 terrain_mixed_texture_val(uint2 adjacency_mats, uint wang_idx, float2 uv, float3 world_pos, constant TerrainUniforms &uniforms, device const float *splat_map, device const int *splats, uint texture_count, texture2d_array<float> terrain_textures, sampler terrain_sampler) {\n"
 "    float4 ret = float4(0.0);\n"
 "    for(uint i = 0u; i < 2u; i++) {\n"
 "        uint packed = (i == 0u) ? adjacency_mats.x : adjacency_mats.y;\n"
 "        for(uint j = 0u; j < 4u; j++) {\n"
-"            ret += terrain_texture_val(terrain_packed_idx(packed, j * 8u), wang_idx, uv, texture_count, terrain_textures, terrain_sampler) * 0.125;\n"
+"            ret += terrain_texture_val(terrain_packed_idx(packed, j * 8u), wang_idx, uv, world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler) * 0.125;\n"
 "        }\n"
 "    }\n"
 "    return ret;\n"
@@ -439,34 +675,34 @@ static const char *s_terrain_shader_source =
 "            q12 * (x2 - x) * (y - y1) +\n"
 "            q22 * (x - x1) * (y - y1)) / (x2x1 * y2y1);\n"
 "}\n"
-"static float4 terrain_blended_texture_val(TerrainVertexOut in, uint texture_count, texture2d_array<float> terrain_textures, sampler terrain_sampler) {\n"
+"static float4 terrain_blended_texture_val(TerrainVertexOut in, constant TerrainUniforms &uniforms, device const float *splat_map, device const int *splats, uint texture_count, texture2d_array<float> terrain_textures, sampler terrain_sampler) {\n"
 "    bool bot = (in.uv.x > in.uv.y) && (1.0 - in.uv.x > in.uv.y);\n"
 "    bool top = (in.uv.x < in.uv.y) && (1.0 - in.uv.x < in.uv.y);\n"
 "    bool left = (in.uv.x < in.uv.y) && (1.0 - in.uv.x > in.uv.y);\n"
 "    bool right = (in.uv.x > in.uv.y) && (1.0 - in.uv.x < in.uv.y);\n"
 "    bool left_half = in.uv.x < 0.5;\n"
 "    bool bot_half = in.uv.y < 0.5;\n"
-"    float4 color1 = terrain_mixed_texture_val(in.c1_indices, in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler);\n"
-"    float4 color2 = terrain_mixed_texture_val(in.c2_indices, in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler);\n"
+"    float4 color1 = terrain_mixed_texture_val(in.c1_indices, in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler);\n"
+"    float4 color2 = terrain_mixed_texture_val(in.c2_indices, in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler);\n"
 "    float4 tile_color = mix(\n"
-"        terrain_texture_val(terrain_packed_idx(in.mid_indices, 0u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
-"        terrain_texture_val(terrain_packed_idx(in.mid_indices, 8u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.mid_indices, 0u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.mid_indices, 8u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
 "        0.5);\n"
 "    float4 left_center_color = mix(\n"
-"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 16u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
-"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 24u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 16u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 24u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
 "        0.5);\n"
 "    float4 bot_center_color = mix(\n"
-"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 0u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
-"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 8u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 0u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 8u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
 "        0.5);\n"
 "    float4 right_center_color = mix(\n"
-"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 0u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
-"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 8u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 0u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.lr_indices, 8u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
 "        0.5);\n"
 "    float4 top_center_color = mix(\n"
-"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 16u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
-"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 24u), in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 16u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
+"        terrain_texture_val(terrain_packed_idx(in.tb_indices, 24u), in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler),\n"
 "        0.5);\n"
 "    if(top) {\n"
 "        if(left_half) return terrain_bilinear(left_center_color, color1, tile_color, top_center_color, 0.0, 0.5, 0.5, 1.0, in.uv.x, in.uv.y);\n"
@@ -486,7 +722,7 @@ static const char *s_terrain_shader_source =
 "    }\n"
 "    return tile_color;\n"
 "}\n"
-"fragment float4 terrain_fragment(TerrainVertexOut in [[stage_in]], constant TerrainUniforms &uniforms [[buffer(1)]], device const uchar *fog_buff [[buffer(2)]], device const uchar *water_buff [[buffer(3)]], device const float *height_map [[buffer(4)]], texture2d_array<float> terrain_textures [[texture(0)]], texture2d<float> water_dudv_map [[texture(1)]], texture2d<float> water_normal_map [[texture(2)]], depth2d<float> shadow_map [[texture(3)]], sampler terrain_sampler [[sampler(0)]], sampler shadow_sampler [[sampler(1)]], sampler water_sampler [[sampler(2)]]) {\n"
+"fragment float4 terrain_fragment(TerrainVertexOut in [[stage_in]], constant TerrainUniforms &uniforms [[buffer(1)]], device const uchar *fog_buff [[buffer(2)]], device const uchar *water_buff [[buffer(3)]], device const float *height_map [[buffer(4)]], device atomic_uint *shadow_probe [[buffer(5)]], constant uint4 &shadow_probe_params [[buffer(6)]], device const float *splat_map [[buffer(7)]], device const int *splats [[buffer(8)]], texture2d_array<float> terrain_textures [[texture(0)]], texture2d<float> water_dudv_map [[texture(1)]], texture2d<float> water_normal_map [[texture(2)]], depth2d<float> shadow_map [[texture(3)]], texture2d<uint> shadow_owner_map [[texture(4)]], sampler terrain_sampler [[sampler(0)]], sampler shadow_sampler [[sampler(1)]], sampler water_sampler [[sampler(2)]]) {\n"
 "    if(clip_water_world_y(in.world_pos.y, uniforms.clip_params)) discard_fragment();\n"
 "    float3 normal = normalize(in.normal);\n"
 "    if(in.no_bump_map == 0u && uniforms.terrain_params.z > 0.5) {\n"
@@ -499,6 +735,7 @@ static const char *s_terrain_shader_source =
 "    float3 ambient = (0.70 + height * 0.03) * uniforms.ambient_color.xyz;\n"
 "    float3 color = terrain_material_color(in.material_idx);\n"
 "    float fog_factor = 1.0;\n"
+"    float minimap_water = 0.0;\n"
 "    if(uniforms.chunk_size.x > 0u && uniforms.chunk_size.y > 0u) {\n"
 "        float field_w = uniforms.tile_world_size.x * uniforms.tiles_per_chunk.x;\n"
 "        float field_h = uniforms.tile_world_size.y * uniforms.tiles_per_chunk.y;\n"
@@ -520,13 +757,15 @@ static const char *s_terrain_shader_source =
 "        if(uniforms.water_params.z > 0.5) {\n"
 "            fog_factor = terrain_fog_tint(fog_buff, uniforms.chunk_size, uniforms.tiles_per_chunk, chunk_r, chunk_c, tile_r, tile_c, in.uv);\n"
 "        }\n"
-"        (void)fog_idx;\n"
+"        if(uniforms.water_params.y > 1.5 && water_buff[fog_idx] != 0u) {\n"
+"            minimap_water = 1.0;\n"
+"        }\n"
 "    }\n"
 "    if(uniforms.terrain_params.x > 0.5) {\n"
 "        uint texture_count = uint(uniforms.terrain_params.x + 0.5);\n"
 "        float4 texel = (in.blend_mode == 1u)\n"
-"            ? terrain_blended_texture_val(in, texture_count, terrain_textures, terrain_sampler)\n"
-"            : terrain_texture_val(in.material_idx, in.wang_index, in.uv, texture_count, terrain_textures, terrain_sampler);\n"
+"            ? terrain_blended_texture_val(in, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler)\n"
+"            : terrain_texture_val(in.material_idx, in.wang_index, in.uv, in.world_pos, uniforms, splat_map, splats, texture_count, terrain_textures, terrain_sampler);\n"
 "        if(texel.a <= 0.5) discard_fragment();\n"
 "        color = texel.xyz * texel.a;\n"
 "    }\n"
@@ -542,6 +781,10 @@ static const char *s_terrain_shader_source =
 "        float shadow = shadow_factor(in.light_space_pos, in.normal, light_dir, shadow_map, shadow_sampler, uniforms.shadow_params.y, uniforms.shadow_params.w);\n"
 "        lit *= mix(1.0, uniforms.shadow_params.z, shadow);\n"
 "    }\n"
+"    if(minimap_water > 0.5) {\n"
+"        lit = float3(0.01, 0.03, 0.035);\n"
+"    }\n"
+"    shadow_screen_probe_write(in.position, in.light_space_pos, in.world_pos, in.material_idx, 1u, uniforms.shadow_params.y, shadow_owner_map, shadow_map, shadow_sampler, shadow_probe, shadow_probe_params);\n"
 "    return float4(lit * fog_factor, 1.0);\n"
 "}\n";
 
@@ -549,6 +792,39 @@ static const char *s_static_mesh_shader_source =
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
 "#define METAL_MAX_MATERIALS 16\n"
+"static uint float_bits(float v) { return as_type<uint>(v); }\n"
+"static void shadow_screen_probe_write(float4 frag_pos, float4 light_space_pos, float3 world_pos, uint material_idx, uint surface_kind, float bias, texture2d<uint> owner_map, depth2d<float> shadow_map, sampler shadow_sampler, device atomic_uint *probe_out, constant uint4 &probe_params) {\n"
+"    if(probe_params.x == 0u) return;\n"
+"    int dx = int(frag_pos.x) - int(probe_params.y);\n"
+"    int dy = int(frag_pos.y) - int(probe_params.z);\n"
+"    int radius = int(probe_params.w);\n"
+"    if(abs(dx) > radius || abs(dy) > radius) return;\n"
+"    float w = max(abs(light_space_pos.w), 0.0001);\n"
+"    float2 proj_ndc = light_space_pos.xy / w;\n"
+"    float2 proj_xy = float2(proj_ndc.x * 0.5 + 0.5, 0.5 - proj_ndc.y * 0.5);\n"
+"    float proj_z = light_space_pos.z / w;\n"
+"    uint valid = (proj_xy.x >= 0.0 && proj_xy.y >= 0.0 && proj_xy.x <= 1.0 && proj_xy.y <= 1.0 && proj_z >= 0.0 && proj_z <= 0.95) ? 1u : 0u;\n"
+"    uint2 dims = uint2(owner_map.get_width(), owner_map.get_height());\n"
+"    uint2 texel = uint2(clamp(proj_xy, float2(0.0), float2(0.999999)) * float2(dims));\n"
+"    uint owner = valid ? owner_map.read(texel).r : 0u;\n"
+"    float closest_depth = valid ? shadow_map.sample(shadow_sampler, proj_xy) : 1.0;\n"
+"    atomic_store_explicit(&probe_out[0], 1u, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[1], uint(frag_pos.x), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[2], uint(frag_pos.y), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[3], texel.x, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[4], texel.y, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[5], owner, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[6], surface_kind, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[7], valid, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[8], float_bits(proj_z), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[9], float_bits(closest_depth), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[10], float_bits(world_pos.x), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[11], float_bits(world_pos.y), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[12], float_bits(world_pos.z), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[13], material_idx, memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[14], float_bits(proj_z - bias), memory_order_relaxed);\n"
+"    atomic_store_explicit(&probe_out[15], (valid && (proj_z - bias > closest_depth)) ? 1u : 0u, memory_order_relaxed);\n"
+"}\n"
 "struct StaticMeshVertexIn {\n"
 "    float3 position [[attribute(0)]];\n"
 "    float2 uv [[attribute(1)]];\n"
@@ -593,7 +869,8 @@ static const char *s_static_mesh_shader_source =
 "}\n"
 "static float mesh_shadow_factor(float4 light_space_pos, depth2d<float> shadow_map, sampler shadow_sampler, float bias) {\n"
 "    float w = max(abs(light_space_pos.w), 0.0001);\n"
-"    float2 proj_xy = (light_space_pos.xy / w) * 0.5 + 0.5;\n"
+"    float2 proj_ndc = light_space_pos.xy / w;\n"
+"    float2 proj_xy = float2(proj_ndc.x * 0.5 + 0.5, 0.5 - proj_ndc.y * 0.5);\n"
 "    float  proj_z  = light_space_pos.z / w;\n"
 "    if(proj_xy.x < 0.0 || proj_xy.y < 0.0\n"
 "       || proj_xy.x > 1.0 || proj_xy.y > 1.0\n"
@@ -607,13 +884,15 @@ static const char *s_static_mesh_shader_source =
 "    if(mode == 2u) return world_y < clip_params.z;\n"
 "    return false;\n"
 "}\n"
-"fragment float4 static_mesh_fragment(StaticMeshVertexOut in [[stage_in]], constant StaticMeshUniforms &uniforms [[buffer(1)]], texture2d_array<float> material_textures [[texture(0)]], depth2d<float> shadow_map [[texture(1)]], sampler material_sampler [[sampler(0)]], sampler shadow_sampler [[sampler(1)]]) {\n"
+"fragment float4 static_mesh_fragment(StaticMeshVertexOut in [[stage_in]], constant StaticMeshUniforms &uniforms [[buffer(1)]], device atomic_uint *shadow_probe [[buffer(2)]], constant uint4 &shadow_probe_params [[buffer(3)]], texture2d_array<float> material_textures [[texture(0)]], depth2d<float> shadow_map [[texture(1)]], texture2d<uint> shadow_owner_map [[texture(2)]], sampler material_sampler [[sampler(0)]], sampler shadow_sampler [[sampler(1)]]) {\n"
 "    if(clip_water_world_y(in.world_pos.y, uniforms.clip_params)) discard_fragment();\n"
 "    float3 normal = normalize(in.normal);\n"
 "    float3 light_vec = uniforms.light_pos.xyz - in.world_pos;\n"
 "    float3 light_dir = light_vec / max(length(light_vec), 0.0001);\n"
 "    float diffuse = max(dot(normal, light_dir), 0.0);\n"
 "    uint diffuse_idx = min(in.material_idx, uint(METAL_MAX_MATERIALS - 1));\n"
+"    float specular_strength = max(max(uniforms.material_specular[diffuse_idx].x, uniforms.material_specular[diffuse_idx].y), uniforms.material_specular[diffuse_idx].z);\n"
+"    float3 specular_normal = (uniforms.effect_params.z > 0.5 || specular_strength < 0.75) ? normal : in.normal;\n"
 "    float4 tex_rgba = float4(1.0, 1.0, 1.0, 1.0);\n"
 "    if(uniforms.effect_params.x > 0.5 && in.material_idx < uint(uniforms.effect_params.x + 0.5)) {\n"
 "        tex_rgba = material_textures.sample(material_sampler, in.uv, in.material_idx, bias(-0.5));\n"
@@ -622,7 +901,7 @@ static const char *s_static_mesh_shader_source =
 "        tex_rgba.xyz *= tex_rgba.w;\n"
 "    }\n"
 "    float3 view_dir = normalize(uniforms.view_pos.xyz - in.world_pos);\n"
-"    float3 reflect_dir = reflect(-light_dir, normal);\n"
+"    float3 reflect_dir = reflect(-light_dir, specular_normal);\n"
 "    float specular = pow(max(dot(view_dir, reflect_dir), 0.0), 2.0);\n"
 "    float3 ambient = uniforms.material_ambient[diffuse_idx].xxx * uniforms.ambient_color.xyz;\n"
 "    float3 diffuse_lit = uniforms.light_color.xyz * (diffuse * uniforms.material_diffuse[diffuse_idx].xyz);\n"
@@ -632,6 +911,7 @@ static const char *s_static_mesh_shader_source =
 "        float shadow = mesh_shadow_factor(in.light_space_pos, shadow_map, shadow_sampler, uniforms.shadow_params.y);\n"
 "        lit *= mix(1.0, uniforms.shadow_params.z, shadow);\n"
 "    }\n"
+"    shadow_screen_probe_write(in.position, in.light_space_pos, in.world_pos, in.material_idx, 2u, uniforms.shadow_params.y, shadow_owner_map, shadow_map, shadow_sampler, shadow_probe, shadow_probe_params);\n"
 "    return float4(lit, tex_rgba.w);\n"
 "}\n";
 
@@ -645,6 +925,7 @@ static const char *s_shadow_depth_shader_source =
 "    float4x4 model;\n"
 "    float4x4 view;\n"
 "    float4x4 proj;\n"
+"    uint4 owner_params;\n"
 "};\n"
 "struct ShadowVertexOut {\n"
 "    float4 position [[position]];\n"
@@ -653,6 +934,9 @@ static const char *s_shadow_depth_shader_source =
 "    ShadowVertexOut out;\n"
 "    out.position = uniforms.proj * uniforms.view * uniforms.model * float4(in.position, 1.0);\n"
 "    return out;\n"
+"}\n"
+"fragment uint shadow_owner_fragment(ShadowVertexOut in [[stage_in]], constant ShadowUniforms &uniforms [[buffer(1)]]) {\n"
+"    return uniforms.owner_params.x;\n"
 "}\n";
 
 static const char *s_water_surface_shader_source =
@@ -681,6 +965,8 @@ static const char *s_water_surface_shader_source =
 "    float3 world_pos;\n"
 "    float2 world_xz;\n"
 "    float2 uv;\n"
+"    float3 view_dir;\n"
+"    float3 light_dir;\n"
 "};\n"
 "vertex WaterVertexOut water_surface_vertex(WaterVertexIn in [[stage_in]], constant WaterUniforms &uniforms [[buffer(1)]]) {\n"
 "    WaterVertexOut out;\n"
@@ -689,6 +975,8 @@ static const char *s_water_surface_shader_source =
 "    out.world_pos = world_pos.xyz;\n"
 "    out.world_xz = world_pos.xz;\n"
 "    out.uv = float2(in.position.x * 0.5 + 0.5, in.position.z * 0.5 + 0.5) * float2(float(uniforms.chunk_size.x) * 1.5, float(uniforms.chunk_size.y) * 1.5);\n"
+"    out.view_dir = normalize(uniforms.view_pos.xyz - world_pos.xyz);\n"
+"    out.light_dir = normalize(uniforms.light_pos.xyz - world_pos.xyz);\n"
 "    return out;\n"
 "}\n"
 "static float terrain_fog_factor(uint state) {\n"
@@ -815,10 +1103,7 @@ static const char *s_water_surface_shader_source =
 "        refract_color = refract_tex.sample(water_sampler, refract_uv);\n"
 "        reflect_color = reflect_tex.sample(water_sampler, reflect_uv);\n"
 "    }\n"
-"    float3 light_vec = uniforms.light_pos.xyz - in.world_pos;\n"
-"    float3 light_dir = light_vec / max(length(light_vec), 0.0001);\n"
-"    float3 view_dir = normalize(uniforms.view_pos.xyz - in.world_pos);\n"
-"    float specular = pow(max(dot(reflect(-light_dir, water_normal), view_dir), 0.0), 0.8);\n"
+"    float specular = pow(max(dot(reflect(-in.light_dir, water_normal), in.view_dir), 0.0), 0.8);\n"
 "    if(uniforms.water_depth_params.w > 0.5 && uniforms.water_texture_params.w > 0.5) {\n"
 "        if(should_discard_water_edge(refract_depth, water_sampler, screen_uv, uniforms.water_depth_params.x, uniforms.water_depth_params.y, uniforms.water_depth_params.z)) discard_fragment();\n"
 "        float ground_dist = linearize_depth(refract_depth.sample(water_sampler, screen_uv), uniforms.water_depth_params.x, uniforms.water_depth_params.y);\n"
@@ -895,6 +1180,13 @@ struct metal_ui_uniforms{
     float _padding[2];
 };
 
+struct metal_minimap_uniforms{
+    vector_uint2 chunk_size;
+    vector_uint2 tiles_per_chunk;
+    uint32_t     fog_enabled;
+    uint32_t     _padding[3];
+};
+
 struct metal_terrain_uniforms{
     matrix_float4x4 model;
     matrix_float4x4 view;
@@ -937,10 +1229,32 @@ struct metal_world_color_uniforms{
     matrix_float4x4 proj;
 };
 
+struct metal_sprite_uniforms{
+    matrix_float4x4 view;
+    matrix_float4x4 projection;
+    vector_float3 view_dir;
+    uint32_t sprite_nrows;
+    uint32_t sprite_ncols;
+};
+
+struct metal_sprite_desc{
+    float ws_pos[3];
+    float pad0;
+    float ws_size[2];
+    uint32_t frame_idx;
+    float pad1;
+};
+
+struct metal_sprite_draw_call{
+    size_t begin_idx;
+    size_t end_idx;
+};
+
 struct metal_shadow_uniforms{
     matrix_float4x4 model;
     matrix_float4x4 view;
     matrix_float4x4 proj;
+    vector_uint4 owner_params;
 };
 
 struct metal_water_surface_uniforms{
@@ -1050,8 +1364,11 @@ static void release_ui_resources(void)
 {
     s_ui_font_texture = nil;
     s_ui_sampler = nil;
+    s_minimap_sampler = nil;
     s_ui_pipeline = nil;
     s_ui_msaa_pipeline = nil;
+    s_minimap_pipeline = nil;
+    s_minimap_msaa_pipeline = nil;
     s_ui_texpath_cache = nil;
     s_pending_ui_texture = nil;
 }
@@ -1062,6 +1379,8 @@ static void release_scene_resources(void)
     s_frame_msaa_texture = nil;
     s_frame_depth_texture = nil;
     s_shadow_depth_texture = nil;
+    s_shadow_owner_texture = nil;
+    s_shadow_owner_dummy_texture = nil;
     s_water_reflection_texture = nil;
     s_water_reflection_depth_texture = nil;
     s_water_refraction_texture = nil;
@@ -1073,12 +1392,19 @@ static void release_scene_resources(void)
     s_fog_buffer = nil;
     s_water_buffer = nil;
     s_heightmap_buffer = nil;
+    s_splatmap_buffer = nil;
+    s_splat_indices_buffer = nil;
     s_skybox_vertex_buffer = nil;
+    s_shadow_screen_probe_buffer = nil;
+    s_shadow_screen_probe_params_buffer = nil;
+    s_shadow_screen_probe_disabled_params_buffer = nil;
+    s_water_reflection_dump_buffer = nil;
     s_scene_sampler = nil;
     s_material_sampler = nil;
     s_terrain_sampler = nil;
     s_shadow_sampler = nil;
     s_skybox_sampler = nil;
+    s_sprite_sampler = nil;
     s_depth_write_state = nil;
     s_depth_read_state = nil;
     s_terrain_pipeline = nil;
@@ -1099,10 +1425,15 @@ static void release_scene_resources(void)
     s_world_color_depth_msaa_pipeline = nil;
     s_shadow_terrain_pipeline = nil;
     s_shadow_mesh_pipeline = nil;
+    s_shadow_owner_terrain_pipeline = nil;
+    s_shadow_owner_mesh_pipeline = nil;
     s_water_surface_pipeline = nil;
     s_water_surface_msaa_pipeline = nil;
     s_skybox_pipeline = nil;
     s_skybox_msaa_pipeline = nil;
+    s_sprite_pipeline = nil;
+    s_sprite_msaa_pipeline = nil;
+    s_sprite_texpath_cache = nil;
     s_terrain_texture_count = 0;
     s_shadow_map_valid = false;
 }
@@ -1234,19 +1565,73 @@ static bool raw_material_debug_enabled(void)
     return s_raw_material_debug_enabled;
 }
 
+static bool shadow_screen_probe_enabled(void)
+{
+    if(!s_shadow_screen_probe_env_checked) {
+        const char *target = getenv("PF_METAL_SHADOW_SCREEN_PROBE");
+        const char *path = getenv("PF_METAL_SHADOW_SCREEN_PROBE_PATH");
+        const char *radius = getenv("PF_METAL_SHADOW_SCREEN_PROBE_RADIUS");
+        char *end = NULL;
+        if(target && *target) {
+            unsigned long x = strtoul(target, &end, 10);
+            if(end && *end == ',') {
+                char *end_y = NULL;
+                unsigned long y = strtoul(end + 1, &end_y, 10);
+                if(end_y && *end_y == '\0') {
+                    s_shadow_screen_probe_x = (uint32_t)x;
+                    s_shadow_screen_probe_y = (uint32_t)y;
+                    s_shadow_screen_probe_enabled = true;
+                }
+            }
+        }
+        s_shadow_screen_probe_radius = (radius && *radius)
+            ? (uint32_t)strtoul(radius, NULL, 10)
+            : 0;
+        if(path && *path)
+            strncpy(s_shadow_screen_probe_output_path, path, sizeof(s_shadow_screen_probe_output_path) - 1);
+        if(s_shadow_screen_probe_enabled) {
+            fprintf(stderr, "PF_METAL_SHADOW_SCREEN_PROBE target=%u,%u radius=%u output=%s\n",
+                s_shadow_screen_probe_x, s_shadow_screen_probe_y,
+                s_shadow_screen_probe_radius,
+                s_shadow_screen_probe_output_path[0] ? s_shadow_screen_probe_output_path : "<stderr>");
+        }
+        s_shadow_screen_probe_env_checked = true;
+    }
+    return s_shadow_screen_probe_enabled;
+}
+
+static const char *shadow_probe_kind_name(uint32_t kind)
+{
+    switch(kind) {
+    case 1: return "terrain";
+    case 2: return "static";
+    default: return "unknown";
+    }
+}
+
+static float uint_bits_to_float(uint32_t bits)
+{
+    float ret;
+    memcpy(&ret, &bits, sizeof(ret));
+    return ret;
+}
+
 static NSUInteger requested_frame_sample_count(void)
 {
     if(!s_msaa_env_checked) {
-        s_requested_sample_count = METAL_DEFAULT_MSAA_SAMPLES;
+        const char *parity_mode = getenv("PF_PARITY_MODE");
+        s_requested_sample_count = (parity_mode && 0 == strcmp(parity_mode, "1"))
+            ? 1
+            : METAL_DEFAULT_MSAA_SAMPLES;
         const char *value = getenv("PF_METAL_MSAA_SAMPLES");
         if(value && *value) {
             char *end = NULL;
             long samples = strtol(value, &end, 10);
-            if(end != value && (samples == 1 || samples == 2 || samples == 4)) {
+            if(end != value && (samples == 1 || samples == 2 || samples == 4 || samples == 8)) {
                 s_requested_sample_count = (NSUInteger)samples;
             }else{
-                fprintf(stderr, "PF_METAL_MSAA_SAMPLES supports 1, 2, or 4; using %u\n",
-                    METAL_DEFAULT_MSAA_SAMPLES);
+                fprintf(stderr, "PF_METAL_MSAA_SAMPLES supports 1, 2, 4, or 8; using %lu\n",
+                    (unsigned long)s_requested_sample_count);
             }
         }
         if(s_requested_sample_count > METAL_MAX_MSAA_SAMPLES)
@@ -1352,7 +1737,7 @@ static void present_clear(void)
     pass.colorAttachments[0].texture = drawable.texture;
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.2, 0.3, 0.3, 1.0);
 
     id<MTLCommandBuffer> command_buffer = [s_queue commandBuffer];
     if(!command_buffer) {
@@ -1382,7 +1767,13 @@ static NSUInteger desired_frame_sample_count(void)
     NSUInteger requested = requested_frame_sample_count();
     if(requested <= 1)
         return 1;
-    return [s_device supportsTextureSampleCount:requested] ? requested : 1;
+    const NSUInteger candidates[] = {8, 4, 2};
+    for(size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        NSUInteger candidate = candidates[i];
+        if(candidate <= requested && [s_device supportsTextureSampleCount:candidate])
+            return candidate;
+    }
+    return 1;
 }
 
 static bool frame_uses_msaa(void)
@@ -1392,7 +1783,14 @@ static bool frame_uses_msaa(void)
 
 static NSUInteger active_msaa_sample_count(void)
 {
-    return s_frame_sample_count > 1 ? s_frame_sample_count : requested_frame_sample_count();
+    return s_frame_sample_count > 1 ? s_frame_sample_count : desired_frame_sample_count();
+}
+
+static const char *render_info_msaa_samples(void)
+{
+    snprintf(s_info_msaa_samples, sizeof(s_info_msaa_samples), "%lu",
+        (unsigned long)desired_frame_sample_count());
+    return s_info_msaa_samples;
 }
 
 static bool ensure_frame_msaa_texture(NSUInteger sample_count)
@@ -1422,7 +1820,7 @@ static bool ensure_frame_msaa_texture(NSUInteger sample_count)
     desc.textureType = MTLTextureType2DMultisample;
     desc.sampleCount = sample_count;
     desc.storageMode = MTLStorageModePrivate;
-    desc.usage = MTLTextureUsageRenderTarget;
+    desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
     s_frame_msaa_texture = [s_device newTextureWithDescriptor:desc];
     return s_frame_msaa_texture != nil;
 }
@@ -1509,6 +1907,76 @@ static bool ensure_shadow_depth_texture(void)
     return s_shadow_depth_texture != nil;
 }
 
+static bool ensure_shadow_owner_texture(void)
+{
+    if(s_shadow_owner_texture
+    && s_shadow_owner_texture.width == CONFIG_SHADOW_MAP_RES
+    && s_shadow_owner_texture.height == CONFIG_SHADOW_MAP_RES
+    && s_shadow_owner_texture.pixelFormat == MTLPixelFormatR32Uint) {
+        return true;
+    }
+
+    s_shadow_owner_texture = nil;
+
+    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR32Uint
+                                                                                     width:CONFIG_SHADOW_MAP_RES
+                                                                                    height:CONFIG_SHADOW_MAP_RES
+                                                                                 mipmapped:NO];
+    desc.storageMode = MTLStorageModePrivate;
+    desc.usage = MTLTextureUsageRenderTarget;
+    s_shadow_owner_texture = [s_device newTextureWithDescriptor:desc];
+    return s_shadow_owner_texture != nil;
+}
+
+static bool ensure_shadow_owner_dummy_texture(void)
+{
+    if(s_shadow_owner_dummy_texture)
+        return true;
+
+    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR32Uint
+                                                                                     width:1
+                                                                                    height:1
+                                                                                 mipmapped:NO];
+    desc.storageMode = MTLStorageModeShared;
+    desc.usage = MTLTextureUsageShaderRead;
+    s_shadow_owner_dummy_texture = [s_device newTextureWithDescriptor:desc];
+    if(!s_shadow_owner_dummy_texture)
+        return false;
+
+    uint32_t zero = 0;
+    [s_shadow_owner_dummy_texture replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
+                                    mipmapLevel:0
+                                      withBytes:&zero
+                                    bytesPerRow:sizeof(zero)];
+    return true;
+}
+
+static bool ensure_shadow_screen_probe_buffers(void)
+{
+    if(!s_device)
+        return false;
+    if(!s_shadow_screen_probe_buffer) {
+        s_shadow_screen_probe_buffer = [s_device newBufferWithLength:16 * sizeof(uint32_t)
+            options:MTLResourceStorageModeShared];
+        if(!s_shadow_screen_probe_buffer)
+            return false;
+    }
+    if(!s_shadow_screen_probe_params_buffer) {
+        s_shadow_screen_probe_params_buffer = [s_device newBufferWithLength:4 * sizeof(uint32_t)
+            options:MTLResourceStorageModeShared];
+        if(!s_shadow_screen_probe_params_buffer)
+            return false;
+    }
+    if(!s_shadow_screen_probe_disabled_params_buffer) {
+        s_shadow_screen_probe_disabled_params_buffer = [s_device newBufferWithLength:4 * sizeof(uint32_t)
+            options:MTLResourceStorageModeShared];
+        if(!s_shadow_screen_probe_disabled_params_buffer)
+            return false;
+        memset(s_shadow_screen_probe_disabled_params_buffer.contents, 0, 4 * sizeof(uint32_t));
+    }
+    return true;
+}
+
 static id<MTLRenderPipelineState> build_ui_pipeline(NSUInteger sample_count)
 {
     NSError *error = nil;
@@ -1582,6 +2050,138 @@ static id<MTLRenderPipelineState> ensure_ui_pipeline(bool multisampled)
     if(*slot && s_ui_sampler)
         return *slot;
     *slot = build_ui_pipeline(multisampled ? active_msaa_sample_count() : 1);
+    return *slot;
+}
+
+static id<MTLRenderPipelineState> build_minimap_pipeline(NSUInteger sample_count)
+{
+    NSError *error = nil;
+    NSString *source = [NSString stringWithUTF8String:s_minimap_shader_source];
+    id<MTLLibrary> library = [s_device newLibraryWithSource:source options:nil error:&error];
+    if(!library) {
+        fprintf(stderr, "Metal minimap shader compile failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    id<MTLFunction> vertex = [library newFunctionWithName:@"minimap_vertex"];
+    id<MTLFunction> fragment = [library newFunctionWithName:@"minimap_fragment"];
+    if(!vertex || !fragment) {
+        fprintf(stderr, "Metal minimap shader entrypoint lookup failed.\n");
+        return nil;
+    }
+
+    MTLVertexDescriptor *vertex_desc = [MTLVertexDescriptor vertexDescriptor];
+    vertex_desc.attributes[0].format = MTLVertexFormatFloat2;
+    vertex_desc.attributes[0].offset = offsetof(struct ui_vert, screen_pos);
+    vertex_desc.attributes[0].bufferIndex = 0;
+    vertex_desc.attributes[1].format = MTLVertexFormatFloat2;
+    vertex_desc.attributes[1].offset = offsetof(struct ui_vert, uv);
+    vertex_desc.attributes[1].bufferIndex = 0;
+    vertex_desc.attributes[2].format = MTLVertexFormatUChar4Normalized;
+    vertex_desc.attributes[2].offset = offsetof(struct ui_vert, color);
+    vertex_desc.attributes[2].bufferIndex = 0;
+    vertex_desc.layouts[0].stride = sizeof(struct ui_vert);
+    vertex_desc.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+
+    MTLRenderPipelineDescriptor *pipeline_desc = [[MTLRenderPipelineDescriptor alloc] init];
+    pipeline_desc.vertexFunction = vertex;
+    pipeline_desc.fragmentFunction = fragment;
+    pipeline_desc.vertexDescriptor = vertex_desc;
+    pipeline_desc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    pipeline_desc.rasterSampleCount = sample_count;
+    pipeline_desc.colorAttachments[0].blendingEnabled = YES;
+    pipeline_desc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+    pipeline_desc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+    pipeline_desc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    pipeline_desc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorSourceAlpha;
+    pipeline_desc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    pipeline_desc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    id<MTLRenderPipelineState> pipeline = [s_device newRenderPipelineStateWithDescriptor:pipeline_desc error:&error];
+    if(!pipeline) {
+        fprintf(stderr, "Metal minimap pipeline creation failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    MTLSamplerDescriptor *sampler_desc = [[MTLSamplerDescriptor alloc] init];
+    sampler_desc.minFilter = MTLSamplerMinMagFilterLinear;
+    sampler_desc.magFilter = MTLSamplerMinMagFilterLinear;
+    sampler_desc.sAddressMode = MTLSamplerAddressModeClampToEdge;
+    sampler_desc.tAddressMode = MTLSamplerAddressModeClampToEdge;
+    s_minimap_sampler = [s_device newSamplerStateWithDescriptor:sampler_desc];
+    if(!s_minimap_sampler) {
+        fprintf(stderr, "Metal minimap sampler creation failed.\n");
+        return nil;
+    }
+
+    return pipeline;
+}
+
+static id<MTLRenderPipelineState> ensure_minimap_pipeline(bool multisampled)
+{
+    id<MTLRenderPipelineState> __strong *slot = multisampled ? &s_minimap_msaa_pipeline : &s_minimap_pipeline;
+    if(*slot && s_minimap_sampler)
+        return *slot;
+    *slot = build_minimap_pipeline(multisampled ? active_msaa_sample_count() : 1);
+    return *slot;
+}
+
+static id<MTLRenderPipelineState> build_sprite_pipeline(NSUInteger sample_count)
+{
+    NSError *error = nil;
+    NSString *source = [NSString stringWithUTF8String:s_sprite_shader_source];
+    id<MTLLibrary> library = [s_device newLibraryWithSource:source options:nil error:&error];
+    if(!library) {
+        fprintf(stderr, "Metal sprite shader compile failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    id<MTLFunction> vertex = [library newFunctionWithName:@"sprite_vertex"];
+    id<MTLFunction> fragment = [library newFunctionWithName:@"sprite_fragment"];
+    if(!vertex || !fragment) {
+        fprintf(stderr, "Metal sprite shader entrypoint lookup failed.\n");
+        return nil;
+    }
+
+    MTLRenderPipelineDescriptor *pipeline_desc = [[MTLRenderPipelineDescriptor alloc] init];
+    pipeline_desc.vertexFunction = vertex;
+    pipeline_desc.fragmentFunction = fragment;
+    pipeline_desc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    pipeline_desc.rasterSampleCount = sample_count;
+
+    id<MTLRenderPipelineState> pipeline = [s_device newRenderPipelineStateWithDescriptor:pipeline_desc error:&error];
+    if(!pipeline) {
+        fprintf(stderr, "Metal sprite pipeline creation failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    MTLSamplerDescriptor *sampler_desc = [[MTLSamplerDescriptor alloc] init];
+    sampler_desc.minFilter = MTLSamplerMinMagFilterLinear;
+    sampler_desc.magFilter = MTLSamplerMinMagFilterLinear;
+    sampler_desc.mipFilter = MTLSamplerMipFilterLinear;
+    sampler_desc.sAddressMode = MTLSamplerAddressModeRepeat;
+    sampler_desc.tAddressMode = MTLSamplerAddressModeRepeat;
+    s_sprite_sampler = [s_device newSamplerStateWithDescriptor:sampler_desc];
+    if(!s_sprite_sampler) {
+        fprintf(stderr, "Metal sprite sampler creation failed.\n");
+        s_sprite_pipeline = nil;
+        s_sprite_msaa_pipeline = nil;
+        return nil;
+    }
+
+    return pipeline;
+}
+
+static id<MTLRenderPipelineState> ensure_sprite_pipeline(bool multisampled)
+{
+    id<MTLRenderPipelineState> __strong *slot = multisampled ? &s_sprite_msaa_pipeline : &s_sprite_pipeline;
+    if(*slot && s_sprite_sampler)
+        return *slot;
+    *slot = build_sprite_pipeline(multisampled ? active_msaa_sample_count() : 1);
     return *slot;
 }
 
@@ -1998,7 +2598,7 @@ static bool ensure_skybox_sampler(void)
     return s_skybox_sampler != nil;
 }
 
-static id<MTLRenderPipelineState> build_shadow_depth_pipeline(size_t vertex_stride)
+static id<MTLRenderPipelineState> build_shadow_depth_pipeline(size_t vertex_stride, bool owner_output)
 {
     NSError *error = nil;
     NSString *source = [NSString stringWithUTF8String:s_shadow_depth_shader_source];
@@ -2014,6 +2614,14 @@ static id<MTLRenderPipelineState> build_shadow_depth_pipeline(size_t vertex_stri
         fprintf(stderr, "Metal shadow-depth shader entrypoint lookup failed.\n");
         return nil;
     }
+    id<MTLFunction> fragment = nil;
+    if(owner_output) {
+        fragment = [library newFunctionWithName:@"shadow_owner_fragment"];
+        if(!fragment) {
+            fprintf(stderr, "Metal shadow-owner shader entrypoint lookup failed.\n");
+            return nil;
+        }
+    }
 
     MTLVertexDescriptor *vertex_desc = [MTLVertexDescriptor vertexDescriptor];
     vertex_desc.attributes[0].format = MTLVertexFormatFloat3;
@@ -2024,8 +2632,11 @@ static id<MTLRenderPipelineState> build_shadow_depth_pipeline(size_t vertex_stri
 
     MTLRenderPipelineDescriptor *pipeline_desc = [[MTLRenderPipelineDescriptor alloc] init];
     pipeline_desc.vertexFunction = vertex;
+    pipeline_desc.fragmentFunction = fragment;
     pipeline_desc.vertexDescriptor = vertex_desc;
     pipeline_desc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    if(owner_output)
+        pipeline_desc.colorAttachments[0].pixelFormat = MTLPixelFormatR32Uint;
 
     id<MTLRenderPipelineState> pipeline = [s_device newRenderPipelineStateWithDescriptor:pipeline_desc error:&error];
     if(!pipeline) {
@@ -2037,14 +2648,23 @@ static id<MTLRenderPipelineState> build_shadow_depth_pipeline(size_t vertex_stri
     return pipeline;
 }
 
-static id<MTLRenderPipelineState> ensure_shadow_depth_pipeline(bool terrain)
+static id<MTLRenderPipelineState> ensure_shadow_depth_pipeline(bool terrain, bool owner_output)
 {
-    id<MTLRenderPipelineState> __strong *slot = terrain ? &s_shadow_terrain_pipeline : &s_shadow_mesh_pipeline;
+    id<MTLRenderPipelineState> __strong *slot = NULL;
+    if(owner_output)
+        slot = terrain ? &s_shadow_owner_terrain_pipeline : &s_shadow_owner_mesh_pipeline;
+    else
+        slot = terrain ? &s_shadow_terrain_pipeline : &s_shadow_mesh_pipeline;
     if(*slot)
         return *slot;
-    *slot = build_shadow_depth_pipeline(terrain ? sizeof(struct terrain_vert) : sizeof(struct vertex));
+    *slot = build_shadow_depth_pipeline(terrain ? sizeof(struct terrain_vert) : sizeof(struct vertex),
+        owner_output);
     return *slot;
 }
+
+static void shadow_screen_probe_reset_frame(void);
+static void shadow_screen_probe_dump_if_requested(void);
+static void water_reflection_dump_finish_if_pending(void);
 
 static void frame_begin(void)
 {
@@ -2079,7 +2699,7 @@ static void frame_begin(void)
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     }
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.2, 0.3, 0.3, 1.0);
     if(s_frame_depth_texture) {
         pass.depthAttachment.texture = s_frame_depth_texture;
         pass.depthAttachment.loadAction = MTLLoadActionClear;
@@ -2099,6 +2719,7 @@ static void frame_begin(void)
         release_inflight_frame();
         return;
     }
+    shadow_screen_probe_reset_frame();
 
     MTLViewport viewport = {
         .originX = 0.0,
@@ -2176,7 +2797,16 @@ static void frame_present(void)
         s_frame_inflight_reserved = false;
     }
     [s_frame_command_buffer presentDrawable:s_frame_drawable];
+    bool shadow_probe = shadow_screen_probe_enabled();
+    bool water_dump_pending = s_water_reflection_dump_pending;
     [s_frame_command_buffer commit];
+    if(shadow_probe || water_dump_pending) {
+        [s_frame_command_buffer waitUntilCompleted];
+    }
+    if(shadow_probe) {
+        shadow_screen_probe_dump_if_requested();
+    }
+    water_reflection_dump_finish_if_pending();
     capture_note_presented();
     reset_frame_state();
 }
@@ -2195,12 +2825,86 @@ static bool shadow_enabled_for_draw(void)
     return s_shadows_enabled && s_shadow_map_valid && s_shadow_depth_texture && s_shadow_sampler;
 }
 
+static void shadow_screen_probe_reset_frame(void)
+{
+    if(!ensure_shadow_screen_probe_buffers())
+        return;
+
+    memset(s_shadow_screen_probe_buffer.contents, 0, 16 * sizeof(uint32_t));
+    uint32_t *params = s_shadow_screen_probe_params_buffer.contents;
+    params[0] = shadow_screen_probe_enabled() ? 1u : 0u;
+    params[1] = s_shadow_screen_probe_x;
+    params[2] = s_shadow_screen_probe_y;
+    params[3] = s_shadow_screen_probe_radius;
+}
+
+static void bind_shadow_screen_probe_resources(id<MTLRenderCommandEncoder> encoder,
+                                               NSUInteger owner_texture_index,
+                                               NSUInteger probe_buffer_index,
+                                               NSUInteger probe_params_index)
+{
+    if(!encoder || !ensure_shadow_screen_probe_buffers() || !ensure_shadow_owner_dummy_texture())
+        return;
+
+    bool enabled = (encoder == s_frame_encoder) && shadow_screen_probe_enabled();
+    id<MTLBuffer> params_buffer = enabled
+        ? s_shadow_screen_probe_params_buffer
+        : s_shadow_screen_probe_disabled_params_buffer;
+    if(enabled) {
+        uint32_t *params = s_shadow_screen_probe_params_buffer.contents;
+        params[0] = 1u;
+        params[1] = s_shadow_screen_probe_x;
+        params[2] = s_shadow_screen_probe_y;
+        params[3] = s_shadow_screen_probe_radius;
+    }
+
+    id<MTLTexture> owner_texture = (enabled && s_shadow_owner_texture)
+        ? s_shadow_owner_texture
+        : s_shadow_owner_dummy_texture;
+    [encoder setFragmentTexture:owner_texture
+                        atIndex:owner_texture_index];
+    [encoder setFragmentBuffer:s_shadow_screen_probe_buffer offset:0 atIndex:probe_buffer_index];
+    [encoder setFragmentBuffer:params_buffer offset:0 atIndex:probe_params_index];
+}
+
+static void shadow_screen_probe_dump_if_requested(void)
+{
+    if(!shadow_screen_probe_enabled() || !s_shadow_screen_probe_buffer)
+        return;
+    if(!s_shadow_screen_probe_output_path[0])
+        return;
+
+    const uint32_t *row = s_shadow_screen_probe_buffer.contents;
+    if(row[0] == 0)
+        return;
+
+    FILE *fp = fopen(s_shadow_screen_probe_output_path, "w");
+    if(!fp)
+        return;
+
+    fprintf(fp,
+        "hit=%u screen=%u,%u shadow_texel=%u,%u owner=%u surface=%s valid=%u "
+        "proj_z=%.6f closest_depth=%.6f compare_depth=%.6f shadowed=%u "
+        "world=(%.3f,%.3f,%.3f) material=%u\n",
+        row[0], row[1], row[2], row[3], row[4], row[5],
+        shadow_probe_kind_name(row[6]), row[7],
+        uint_bits_to_float(row[8]), uint_bits_to_float(row[9]), uint_bits_to_float(row[14]),
+        row[15],
+        uint_bits_to_float(row[10]), uint_bits_to_float(row[11]), uint_bits_to_float(row[12]),
+        row[13]);
+    fclose(fp);
+}
+
 static void shadow_pass_begin(const vec3_t *light_pos, const vec3_t *cam_pos, const vec3_t *cam_dir)
 {
     if(!light_pos || !cam_pos || !cam_dir)
         return;
     if(!ensure_shadow_depth_texture() || !ensure_shadow_sampler())
         return;
+    const char *owner_dump_path = getenv("PF_METAL_SHADOW_OWNER_DUMP_U32_PATH");
+    bool owner_requested = (owner_dump_path && *owner_dump_path) || shadow_screen_probe_enabled();
+    if(owner_requested && !ensure_shadow_owner_texture())
+        owner_requested = false;
 
     make_shadow_light_space(*light_pos, *cam_pos, *cam_dir,
         &s_shadow_view, &s_shadow_proj, &s_shadow_light_space);
@@ -2210,6 +2914,12 @@ static void shadow_pass_begin(const vec3_t *light_pos, const vec3_t *cam_pos, co
     pass.depthAttachment.loadAction = MTLLoadActionClear;
     pass.depthAttachment.storeAction = MTLStoreActionStore;
     pass.depthAttachment.clearDepth = 1.0;
+    if(owner_requested) {
+        pass.colorAttachments[0].texture = s_shadow_owner_texture;
+        pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+    }
 
     s_shadow_command_buffer = [s_queue commandBuffer];
     if(!s_shadow_command_buffer)
@@ -2238,7 +2948,191 @@ static void shadow_pass_begin(const vec3_t *light_pos, const vec3_t *cam_pos, co
     [s_shadow_encoder setFrontFacingWinding:MTLWindingCounterClockwise];
 
     s_shadow_pass_active = true;
+    s_shadow_owner_pass_active = owner_requested;
     s_shadow_map_valid = false;
+    memset(&s_shadow_caster_stats, 0, sizeof(s_shadow_caster_stats));
+}
+
+static float *metal_copy_shadow_depth(void)
+{
+    if(!s_shadow_depth_texture || !s_device || !s_queue)
+        return NULL;
+
+    NSUInteger w = s_shadow_depth_texture.width;
+    NSUInteger h = s_shadow_depth_texture.height;
+    size_t bpr = w * sizeof(float);
+    size_t total = bpr * h;
+
+    id<MTLBuffer> staging = [s_device newBufferWithLength:total
+        options:MTLResourceStorageModeShared];
+    if(!staging)
+        return NULL;
+
+    id<MTLCommandBuffer> cb = [s_queue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    [blit copyFromTexture:s_shadow_depth_texture
+              sourceSlice:0
+              sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0)
+               sourceSize:MTLSizeMake(w, h, 1)
+                 toBuffer:staging
+        destinationOffset:0
+   destinationBytesPerRow:bpr
+ destinationBytesPerImage:total];
+    [blit endEncoding];
+    [cb commit];
+    [cb waitUntilCompleted];
+
+    float *depth = malloc(total);
+    if(!depth)
+        return NULL;
+    memcpy(depth, staging.contents, total);
+    return depth;
+}
+
+static uint32_t *metal_copy_shadow_owner(void)
+{
+    if(!s_shadow_owner_texture || !s_device || !s_queue)
+        return NULL;
+
+    NSUInteger w = s_shadow_owner_texture.width;
+    NSUInteger h = s_shadow_owner_texture.height;
+    size_t bpr = w * sizeof(uint32_t);
+    size_t total = bpr * h;
+
+    id<MTLBuffer> staging = [s_device newBufferWithLength:total
+        options:MTLResourceStorageModeShared];
+    if(!staging)
+        return NULL;
+
+    id<MTLCommandBuffer> cb = [s_queue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    [blit copyFromTexture:s_shadow_owner_texture
+              sourceSlice:0
+              sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0)
+               sourceSize:MTLSizeMake(w, h, 1)
+                 toBuffer:staging
+        destinationOffset:0
+   destinationBytesPerRow:bpr
+ destinationBytesPerImage:total];
+    [blit endEncoding];
+    [cb commit];
+    [cb waitUntilCompleted];
+
+    uint32_t *owners = malloc(total);
+    if(!owners)
+        return NULL;
+    memcpy(owners, staging.contents, total);
+    return owners;
+}
+
+static void metal_dump_shadow_depth_preview_to_file(const char *path, const float *src)
+{
+    if(!path || !src || !s_shadow_depth_texture)
+        return;
+
+    NSUInteger w = s_shadow_depth_texture.width;
+    NSUInteger h = s_shadow_depth_texture.height;
+    FILE *fp = fopen(path, "wb");
+    if(!fp)
+        return;
+    unsigned char *rgba = malloc(w * h * 4);
+    if(rgba) {
+        for(NSUInteger i = 0; i < w * h; i++) {
+            float d = src[i];
+            if(d < 0.0f) d = 0.0f;
+            if(d > 1.0f) d = 1.0f;
+            unsigned char g = (unsigned char)(d * 255.0f + 0.5f);
+            rgba[i*4 + 0] = g;
+            rgba[i*4 + 1] = g;
+            rgba[i*4 + 2] = g;
+            rgba[i*4 + 3] = 255;
+        }
+        fwrite(rgba, 1, w * h * 4, fp);
+        free(rgba);
+    }
+    fclose(fp);
+    fprintf(stderr, "PF_METAL_SHADOW_DUMP wrote %llux%llu RGBA8 raw to %s\n",
+        (unsigned long long)w, (unsigned long long)h, path);
+}
+
+static void metal_dump_shadow_depth_f32_to_file(const char *path, const float *depth)
+{
+    if(!path || !depth || !s_shadow_depth_texture)
+        return;
+
+    NSUInteger w = s_shadow_depth_texture.width;
+    NSUInteger h = s_shadow_depth_texture.height;
+    FILE *fp = fopen(path, "wb");
+    if(!fp)
+        return;
+    fwrite(depth, sizeof(float), w * h, fp);
+    fclose(fp);
+    fprintf(stderr, "PF_METAL_SHADOW_DUMP_F32 wrote %llux%llu float32 raw to %s\n",
+        (unsigned long long)w, (unsigned long long)h, path);
+}
+
+static void metal_dump_shadow_depth_if_requested(void)
+{
+    const char *preview_path = getenv("PF_METAL_SHADOW_DUMP_PATH");
+    const char *f32_path = getenv("PF_METAL_SHADOW_DUMP_F32_PATH");
+    if((!preview_path || !*preview_path) && (!f32_path || !*f32_path))
+        return;
+
+    const char *min_static = getenv("PF_METAL_SHADOW_DUMP_MIN_STATIC_DRAWS");
+    if(min_static && *min_static && s_shadow_caster_stats.static_draws < (unsigned)strtoul(min_static, NULL, 10))
+        return;
+    const char *min_anim = getenv("PF_METAL_SHADOW_DUMP_MIN_ANIM_DRAWS");
+    if(min_anim && *min_anim && s_shadow_caster_stats.anim_draws < (unsigned)strtoul(min_anim, NULL, 10))
+        return;
+
+    float *depth = metal_copy_shadow_depth();
+    if(!depth)
+        return;
+
+    if(f32_path && *f32_path)
+        metal_dump_shadow_depth_f32_to_file(f32_path, depth);
+    if(preview_path && *preview_path)
+        metal_dump_shadow_depth_preview_to_file(preview_path, depth);
+
+    free(depth);
+}
+
+static void metal_dump_shadow_owner_u32_to_file(const char *path, const uint32_t *owners)
+{
+    if(!path || !owners || !s_shadow_owner_texture)
+        return;
+
+    NSUInteger w = s_shadow_owner_texture.width;
+    NSUInteger h = s_shadow_owner_texture.height;
+    FILE *fp = fopen(path, "wb");
+    if(!fp)
+        return;
+    fwrite(owners, sizeof(uint32_t), w * h, fp);
+    fclose(fp);
+    fprintf(stderr, "PF_METAL_SHADOW_OWNER_DUMP_U32 wrote %llux%llu uint32 raw to %s\n",
+        (unsigned long long)w, (unsigned long long)h, path);
+}
+
+static void metal_dump_shadow_owner_if_requested(void)
+{
+    const char *path = getenv("PF_METAL_SHADOW_OWNER_DUMP_U32_PATH");
+    if(!path || !*path || !s_shadow_owner_pass_active)
+        return;
+
+    const char *min_static = getenv("PF_METAL_SHADOW_DUMP_MIN_STATIC_DRAWS");
+    if(min_static && *min_static && s_shadow_caster_stats.static_draws < (unsigned)strtoul(min_static, NULL, 10))
+        return;
+    const char *min_anim = getenv("PF_METAL_SHADOW_DUMP_MIN_ANIM_DRAWS");
+    if(min_anim && *min_anim && s_shadow_caster_stats.anim_draws < (unsigned)strtoul(min_anim, NULL, 10))
+        return;
+
+    uint32_t *owners = metal_copy_shadow_owner();
+    if(!owners)
+        return;
+    metal_dump_shadow_owner_u32_to_file(path, owners);
+    free(owners);
 }
 
 static void shadow_pass_end(void)
@@ -2255,17 +3149,30 @@ static void shadow_pass_end(void)
         [s_shadow_command_buffer waitUntilCompleted];
         s_shadow_command_buffer = nil;
         s_shadow_map_valid = true;
+
+        if(getenv("PF_METAL_SHADOW_CASTER_LOG")) {
+            fprintf(stderr,
+                "PF_METAL_SHADOW_CASTERS terrain=%u/%zu static=%u/%zu anim=%u/%zu\n",
+                s_shadow_caster_stats.terrain_draws, s_shadow_caster_stats.terrain_verts,
+                s_shadow_caster_stats.static_draws, s_shadow_caster_stats.static_verts,
+                s_shadow_caster_stats.anim_draws, s_shadow_caster_stats.anim_verts);
+        }
+        metal_dump_shadow_depth_if_requested();
+        metal_dump_shadow_owner_if_requested();
     }
     s_shadow_pass_active = false;
+    s_shadow_owner_pass_active = false;
 }
 
 static void render_shadow_vertex_stream(const void *verts, size_t verts_size, size_t vertex_count,
-                                        const mat4x4_t *model, bool terrain)
+                                        const mat4x4_t *model, bool terrain,
+                                        uint32_t owner_uid)
 {
     if(!s_shadow_pass_active || !s_shadow_encoder || !verts || !verts_size || !vertex_count || !model)
         return;
 
-    id<MTLRenderPipelineState> pipeline = ensure_shadow_depth_pipeline(terrain);
+    id<MTLRenderPipelineState> pipeline = ensure_shadow_depth_pipeline(terrain,
+        s_shadow_owner_pass_active);
     if(!pipeline)
         return;
 
@@ -2278,6 +3185,7 @@ static void render_shadow_vertex_stream(const void *verts, size_t verts_size, si
         .model = matrix_from_pf_mat4(model),
         .view = s_shadow_view,
         .proj = s_shadow_proj,
+        .owner_params = {owner_uid, 0u, 0u, 0u},
     };
     id<MTLBuffer> uniform_buffer = [s_device newBufferWithBytes:&uniforms
         length:sizeof(uniforms) options:MTLResourceStorageModeShared];
@@ -2285,14 +3193,18 @@ static void render_shadow_vertex_stream(const void *verts, size_t verts_size, si
         return;
 
     [s_shadow_encoder setRenderPipelineState:pipeline];
+    [s_shadow_encoder setFrontFacingWinding:terrain ? MTLWindingCounterClockwise : MTLWindingClockwise];
     [s_shadow_encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
     [s_shadow_encoder setVertexBuffer:uniform_buffer offset:0 atIndex:1];
+    if(s_shadow_owner_pass_active)
+        [s_shadow_encoder setFragmentBuffer:uniform_buffer offset:0 atIndex:1];
     [s_shadow_encoder drawPrimitives:MTLPrimitiveTypeTriangle
                          vertexStart:0
                          vertexCount:vertex_count];
 }
 
-static void render_shadow_depth_draw(const struct render_private *priv, const mat4x4_t *model)
+static void render_shadow_depth_draw(const struct render_private *priv, const mat4x4_t *model,
+                                     uint32_t owner_uid)
 {
     if(!priv || !model)
         return;
@@ -2300,16 +3212,20 @@ static void render_shadow_depth_draw(const struct render_private *priv, const ma
     if(priv->metal_is_terrain) {
         if(!priv->metal_terrain_verts || !priv->metal_terrain_verts_size || !priv->mesh.num_verts)
             return;
+        s_shadow_caster_stats.terrain_draws++;
+        s_shadow_caster_stats.terrain_verts += priv->mesh.num_verts;
         render_shadow_vertex_stream(priv->metal_terrain_verts, priv->metal_terrain_verts_size,
-            priv->mesh.num_verts, model, true);
+            priv->mesh.num_verts, model, true, owner_uid);
         return;
     }
 
     if(priv->metal_is_static_mesh && !priv->uses_pose_buffer) {
         if(!priv->metal_static_verts || !priv->metal_static_verts_size || !priv->mesh.num_verts)
             return;
+        s_shadow_caster_stats.static_draws++;
+        s_shadow_caster_stats.static_verts += priv->mesh.num_verts;
         render_shadow_vertex_stream(priv->metal_static_verts, priv->metal_static_verts_size,
-            priv->mesh.num_verts, model, false);
+            priv->mesh.num_verts, model, false, owner_uid);
         return;
     }
 
@@ -2323,7 +3239,10 @@ static void render_shadow_depth_draw(const struct render_private *priv, const ma
         if(ok) {
             mat4x4_t identity;
             PFM_Mat4x4_Identity(&identity);
-            render_shadow_vertex_stream(skinned, dst_idx * sizeof(*skinned), dst_idx, &identity, false);
+            s_shadow_caster_stats.anim_draws++;
+            s_shadow_caster_stats.anim_verts += dst_idx;
+            render_shadow_vertex_stream(skinned, dst_idx * sizeof(*skinned), dst_idx, &identity,
+                false, owner_uid);
         }
         free(skinned);
     }
@@ -2337,7 +3256,7 @@ static void render_shadow_batched_stat_entities(const vec_rstat_t *ents)
 
     for(int i = 0; i < vec_size(mutable_ents); i++) {
         const struct ent_stat_rstate *curr = &vec_AT(mutable_ents, i);
-        render_shadow_depth_draw(curr->render_private, &curr->model);
+        render_shadow_depth_draw(curr->render_private, &curr->model, curr->uid);
     }
 }
 
@@ -2350,7 +3269,7 @@ static void render_shadow_batched_anim_entities(const vec_ranim_t *ents)
     for(int i = 0; i < vec_size(mutable_ents); i++) {
         const struct ent_anim_rstate *curr = &vec_AT(mutable_ents, i);
         set_current_anim_uid(curr->uid);
-        render_shadow_depth_draw(curr->render_private, &curr->model);
+        render_shadow_depth_draw(curr->render_private, &curr->model, curr->uid);
     }
 }
 
@@ -2550,6 +3469,63 @@ static void render_ui_triangles(const struct ui_vert *verts, size_t nverts, id<M
                         vertexCount:nverts];
 }
 
+static void render_minimap_triangles(const struct ui_vert *verts, size_t nverts,
+                                     id<MTLTexture> texture, const struct map *map)
+{
+    if(!verts || !nverts || !texture || !map)
+        return;
+
+    frame_begin();
+    if(!s_frame_encoder)
+        return;
+
+    id<MTLRenderPipelineState> pipeline = ensure_minimap_pipeline(frame_uses_msaa());
+    if(!pipeline)
+        return;
+
+    id<MTLBuffer> vertex_buffer = [s_device newBufferWithBytes:verts
+        length:nverts * sizeof(*verts) options:MTLResourceStorageModeShared];
+    if(!vertex_buffer)
+        return;
+
+    int drawable_w = (int)s_layer.drawableSize.width;
+    int drawable_h = (int)s_layer.drawableSize.height;
+    struct metal_ui_uniforms ui_uniforms = {
+        .view_size = {drawable_w, drawable_h},
+        ._padding = {0.0f, 0.0f}
+    };
+    id<MTLBuffer> ui_uniform_buffer = [s_device newBufferWithBytes:&ui_uniforms
+        length:sizeof(ui_uniforms) options:MTLResourceStorageModeShared];
+    if(!ui_uniform_buffer)
+        return;
+
+    struct map_resolution res;
+    M_GetResolution(map, &res);
+    struct metal_minimap_uniforms minimap_uniforms = {
+        .chunk_size = {(uint32_t)res.chunk_w, (uint32_t)res.chunk_h},
+        .tiles_per_chunk = {(uint32_t)res.tile_w, (uint32_t)res.tile_h},
+        .fog_enabled = s_fog_buffer ? 1u : 0u,
+        ._padding = {0u, 0u, 0u}
+    };
+    id<MTLBuffer> minimap_uniform_buffer = [s_device newBufferWithBytes:&minimap_uniforms
+        length:sizeof(minimap_uniforms) options:MTLResourceStorageModeShared];
+    if(!minimap_uniform_buffer)
+        return;
+
+    [s_frame_encoder setRenderPipelineState:pipeline];
+    [s_frame_encoder setDepthStencilState:nil];
+    [s_frame_encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
+    [s_frame_encoder setVertexBuffer:ui_uniform_buffer offset:0 atIndex:1];
+    [s_frame_encoder setFragmentBuffer:minimap_uniform_buffer offset:0 atIndex:1];
+    if(s_fog_buffer)
+        [s_frame_encoder setFragmentBuffer:s_fog_buffer offset:0 atIndex:2];
+    [s_frame_encoder setFragmentTexture:texture atIndex:0];
+    [s_frame_encoder setFragmentSamplerState:s_minimap_sampler atIndex:0];
+    [s_frame_encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                        vertexStart:0
+                        vertexCount:nverts];
+}
+
 static vec2_t transform_model_point(const mat4x4_t *model, vec2_t point)
 {
     mat4x4_t copy = *model;
@@ -2647,13 +3623,18 @@ static bool build_minimap_view_proj(const struct map *map,
     Camera_SetPitchAndYaw(map_cam, -90.0f, 90.0f);
 
     float map_dim = fmaxf(map_size.x, map_size.y);
-    vec2_t bot_left = {-(map_dim / 2.0f), (map_dim / 2.0f)};
-    vec2_t top_right = {(map_dim / 2.0f), -(map_dim / 2.0f)};
-    Camera_TickFinishOrthographic(map_cam, bot_left, top_right);
-
+    vec2_t bot_left = {-(map_dim / 2.0f), -(map_dim / 2.0f)};
+    vec2_t top_right = {(map_dim / 2.0f), (map_dim / 2.0f)};
     mat4x4_t view, proj;
     Camera_MakeViewMat(map_cam, &view);
-    Camera_MakeProjMat(map_cam, &proj);
+    PFM_Mat4x4_MakeOrthographic(bot_left.x, top_right.x, bot_left.y, top_right.y,
+                                 CAM_Z_NEAR_DIST, CONFIG_DRAWDIST, &proj);
+    mat4x4_t z_remap, metal_proj;
+    PFM_Mat4x4_Identity(&z_remap);
+    z_remap.cols[2][2] = 0.5f;
+    z_remap.cols[3][2] = 0.5f;
+    PFM_Mat4x4_Mult4x4(&z_remap, &proj, &metal_proj);
+    proj = metal_proj;
     Camera_Free(map_cam);
 
     *out_view = matrix_from_pf_mat4(&view);
@@ -2677,6 +3658,56 @@ static id<MTLBuffer> ensure_persistent_vertex_buffer(void **slot,
 
     *slot = (__bridge_retained void *)buffer;
     return buffer;
+}
+
+static void maybe_log_terrain_draw(id<MTLRenderCommandEncoder> encoder,
+                                   const struct render_private *priv,
+                                   const mat4x4_t *model)
+{
+    static bool checked;
+    static bool enabled;
+    static unsigned logged;
+
+    if(!checked) {
+        checked = true;
+        enabled = getenv("PF_METAL_TERRAIN_DRAW_LOG") != NULL;
+    }
+    if(!enabled || !priv || !model || !priv->metal_terrain_verts)
+        return;
+
+    unsigned limit = capture_env_uint("PF_METAL_TERRAIN_DRAW_LOG_LIMIT", 256);
+    if(logged >= limit)
+        return;
+    if(encoder != s_frame_encoder && getenv("PF_METAL_TERRAIN_DRAW_LOG_ALL_TARGETS") == NULL)
+        return;
+
+    const struct terrain_vert *verts = priv->metal_terrain_verts;
+    size_t num_verts = priv->metal_terrain_verts_size / sizeof(struct terrain_vert);
+    size_t tile_count = (size_t)s_map_tiles_per_chunk.x * (size_t)s_map_tiles_per_chunk.y;
+    size_t top0 = 4 * VERTS_PER_SIDE_FACE;
+    size_t center = ((tile_count / 2) * VERTS_PER_TILE) + top0;
+    int top0_mat = (top0 < num_verts) ? verts[top0].material_idx : -1;
+    int center_mat = (center < num_verts) ? verts[center].material_idx : -1;
+    float field_w = s_map_tile_world_size.x * (float)s_map_tiles_per_chunk.x;
+    float field_h = s_map_tile_world_size.y * (float)s_map_tiles_per_chunk.y;
+    int chunk_c = (field_w > 0.0f) ? (int)lrintf((s_map_pos.x - model->cols[3][0]) / field_w) : -1;
+    int chunk_r = (field_h > 0.0f) ? (int)lrintf((model->cols[3][2] - s_map_pos.y) / field_h) : -1;
+    const char *target = (encoder == s_frame_encoder) ? "frame" :
+                         (encoder == s_water_scene_encoder) ? "water" :
+                         s_minimap_bake_pass_active ? "minimap" : "other";
+
+    fprintf(stderr,
+        "PF_METAL_TERRAIN_DRAW target=%s draw=%u priv=%p verts=%p model=(%.3f,%.3f,%.3f) chunk=%d,%d mats top0=%d center=%d top0_pos=(%.3f,%.3f,%.3f) center_pos=(%.3f,%.3f,%.3f)\n",
+        target, logged, (const void *)priv, priv->metal_terrain_verts,
+        model->cols[3][0], model->cols[3][1], model->cols[3][2],
+        chunk_r, chunk_c, top0_mat, center_mat,
+        (top0 < num_verts) ? verts[top0].pos.x : 0.0f,
+        (top0 < num_verts) ? verts[top0].pos.y : 0.0f,
+        (top0 < num_verts) ? verts[top0].pos.z : 0.0f,
+        (center < num_verts) ? verts[center].pos.x : 0.0f,
+        (center < num_verts) ? verts[center].pos.y : 0.0f,
+        (center < num_verts) ? verts[center].pos.z : 0.0f);
+    logged++;
 }
 
 static void release_retained_metal_object(void **slot)
@@ -2736,6 +3767,67 @@ static bool ensure_heightmap_buffer(void)
     return s_heightmap_buffer != nil;
 }
 
+static bool ensure_splatmap_buffer(void)
+{
+    if(s_splatmap_buffer)
+        return true;
+    if(!s_device)
+        return false;
+
+    const size_t count = (size_t)METAL_SPLAT_MAP_RES * (size_t)METAL_SPLAT_MAP_RES;
+    const size_t byte_count = count * sizeof(float);
+    float *data = malloc(byte_count);
+    if(!data)
+        return false;
+
+    Noise_GenerateOctavePerlinTile2D(METAL_SPLAT_MAP_RES, METAL_SPLAT_MAP_RES,
+        1.0f / 128.0f, 4, 0.5f, data);
+
+    s_splatmap_buffer = [s_device newBufferWithBytes:data
+        length:byte_count options:MTLResourceStorageModeShared];
+    free(data);
+    return s_splatmap_buffer != nil;
+}
+
+static void fill_default_splat_indices(int indices[MAX_MAP_TEXTURES])
+{
+    for(size_t i = 0; i < MAX_MAP_TEXTURES; i++)
+        indices[i] = -1;
+}
+
+static bool ensure_splat_indices_buffer(void)
+{
+    if(s_splat_indices_buffer)
+        return true;
+    if(!s_device)
+        return false;
+
+    int indices[MAX_MAP_TEXTURES];
+    fill_default_splat_indices(indices);
+    s_splat_indices_buffer = [s_device newBufferWithBytes:indices
+        length:sizeof(indices) options:MTLResourceStorageModeShared];
+    return s_splat_indices_buffer != nil;
+}
+
+static void update_splat_indices(const size_t *num_splats, const struct splatmap *splatmap)
+{
+    int indices[MAX_MAP_TEXTURES];
+    fill_default_splat_indices(indices);
+
+    if(num_splats && splatmap) {
+        for(size_t i = 0; i < *num_splats; i++) {
+            unsigned base_idx = splatmap->splats[i].base_mat_idx;
+            unsigned accent_idx = splatmap->splats[i].accent_mat_idx;
+            if(base_idx < MAX_MAP_TEXTURES && accent_idx < MAX_MAP_TEXTURES)
+                indices[base_idx] = (int)accent_idx;
+        }
+    }
+
+    if(!ensure_splat_indices_buffer())
+        return;
+    memcpy([s_splat_indices_buffer contents], indices, sizeof(indices));
+}
+
 static void draw_terrain_to_encoder(id<MTLRenderCommandEncoder> encoder,
                                     const struct render_private *priv,
                                     const mat4x4_t *model,
@@ -2746,6 +3838,7 @@ static void draw_terrain_to_encoder(id<MTLRenderCommandEncoder> encoder,
     id<MTLRenderPipelineState> pipeline = nil;
     bool multisampled = (encoder == s_frame_encoder) && frame_uses_msaa();
     bool water_scene_target = (encoder == s_water_scene_encoder) && s_water_scene_pass_active;
+    bool minimap_target = s_minimap_bake_pass_active;
     bool depth_enabled = ((encoder == s_frame_encoder) && frame_has_depth()) || water_scene_target;
     if(!encoder || !priv || !priv->metal_is_terrain)
         return;
@@ -2761,8 +3854,11 @@ static void draw_terrain_to_encoder(id<MTLRenderCommandEncoder> encoder,
         priv->metal_terrain_verts_size);
     if(!vertex_buffer)
         return;
+    maybe_log_terrain_draw(encoder, priv, model);
 
     bool heightmap_ready = ensure_heightmap_buffer();
+    bool splatmap_ready = ensure_splatmap_buffer();
+    bool splat_indices_ready = ensure_splat_indices_buffer();
     struct metal_terrain_uniforms uniforms = {
         .model = matrix_from_pf_mat4(model),
         .view = view,
@@ -2776,12 +3872,12 @@ static void draw_terrain_to_encoder(id<MTLRenderCommandEncoder> encoder,
             (float)s_terrain_texture_count,
             (float)METAL_HEIGHT_MAP_RES,
             heightmap_ready ? 1.0f : 0.0f,
-            0.0f,
+            (splatmap_ready && splat_indices_ready) ? (float)METAL_SPLAT_MAP_RES : 0.0f,
         },
         .water_params = {
             SDL_GetTicks() / 1000.0f,
-            (!water_scene_target && s_water_buffer) ? 1.0f : 0.0f,
-            s_fog_buffer ? 1.0f : 0.0f,
+            (!water_scene_target && s_water_buffer) ? (minimap_target ? 2.0f : 1.0f) : 0.0f,
+            (!minimap_target && s_fog_buffer) ? 1.0f : 0.0f,
             (!water_scene_target && s_water_dudv_texture && s_water_normal_texture) ? 1.0f : 0.0f,
         },
         .ambient_color = {s_light_ambient.x, s_light_ambient.y, s_light_ambient.z, 1.0f},
@@ -2809,8 +3905,9 @@ static void draw_terrain_to_encoder(id<MTLRenderCommandEncoder> encoder,
     } else {
         [encoder setDepthStencilState:nil];
     }
-    [encoder setCullMode:MTLCullModeNone];
-    [encoder setFrontFacingWinding:MTLWindingCounterClockwise];
+    bool reflection_pass = water_scene_target && s_water_scene_clip_mode == METAL_WATER_CLIP_KEEP_ABOVE;
+    [encoder setCullMode:(reflection_pass || minimap_target) ? MTLCullModeNone : MTLCullModeBack];
+    [encoder setFrontFacingWinding:MTLWindingClockwise];
     [encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
     [encoder setVertexBuffer:uniform_buffer offset:0 atIndex:1];
     [encoder setFragmentBuffer:uniform_buffer offset:0 atIndex:1];
@@ -2822,6 +3919,12 @@ static void draw_terrain_to_encoder(id<MTLRenderCommandEncoder> encoder,
     }
     if(heightmap_ready) {
         [encoder setFragmentBuffer:s_heightmap_buffer offset:0 atIndex:4];
+    }
+    if(splatmap_ready) {
+        [encoder setFragmentBuffer:s_splatmap_buffer offset:0 atIndex:7];
+    }
+    if(splat_indices_ready) {
+        [encoder setFragmentBuffer:s_splat_indices_buffer offset:0 atIndex:8];
     }
     if(s_terrain_texture_array && ensure_terrain_sampler()) {
         [encoder setFragmentTexture:s_terrain_texture_array atIndex:0];
@@ -2839,6 +3942,7 @@ static void draw_terrain_to_encoder(id<MTLRenderCommandEncoder> encoder,
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:3];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
     }
+    bind_shadow_screen_probe_resources(encoder, 4, 5, 6);
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                 vertexStart:0
                 vertexCount:priv->mesh.num_verts];
@@ -2888,6 +3992,162 @@ static id<MTLTexture> load_rgba_texture_2d(const char *path)
 
     stbi_image_free(data);
     return texture;
+}
+
+static id<MTLTexture> sprite_texpath_get_or_load(const char *full_path)
+{
+    if(!full_path || !s_device)
+        return nil;
+    if(!s_sprite_texpath_cache)
+        s_sprite_texpath_cache = [[NSMutableDictionary alloc] init];
+    NSString *key = [NSString stringWithUTF8String:full_path];
+    id<MTLTexture> tex = [s_sprite_texpath_cache objectForKey:key];
+    if(tex)
+        return tex;
+    tex = load_rgba_texture_2d(full_path);
+    if(tex)
+        [s_sprite_texpath_cache setObject:tex forKey:key];
+    return tex;
+}
+
+static void sort_sprites_by_sheet(struct sprite_desc *sprites, size_t nsprites,
+                                  struct metal_sprite_draw_call out[METAL_MAX_SPRITE_DRAWS],
+                                  size_t *nout)
+{
+    if(!sprites || nsprites == 0) {
+        *nout = 0;
+        return;
+    }
+
+    int i = 1;
+    while(i < nsprites) {
+        int j = i;
+        const char *first = sprites[i].sheet.filename;
+        const char *second = sprites[j].sheet.filename;
+        while(j > 0 && first && second && strcmp(first, second)) {
+            struct sprite_desc tmp = sprites[j - 1];
+            sprites[j - 1] = sprites[j];
+            sprites[j] = tmp;
+            j--;
+        }
+        i++;
+    }
+
+    size_t count = 0;
+    size_t begin_idx = 0;
+    for(size_t k = 1; k < nsprites && count < METAL_MAX_SPRITE_DRAWS; k++) {
+        const char *curr = sprites[k].sheet.filename;
+        const char *prev = sprites[k - 1].sheet.filename;
+        if(!curr || !prev || 0 != strcmp(curr, prev)) {
+            out[count++] = (struct metal_sprite_draw_call){begin_idx, k - 1};
+            begin_idx = k;
+        }
+    }
+    if(count < METAL_MAX_SPRITE_DRAWS)
+        out[count++] = (struct metal_sprite_draw_call){begin_idx, nsprites - 1};
+    *nout = count;
+}
+
+static void log_sprite_draw_stats(const struct sprite_sheet_desc *sheet,
+                                  id<MTLTexture> texture, size_t nents)
+{
+    const char *stats_path = getenv("PF_METAL_SPRITE_STATS_PATH");
+    if(!stats_path || !*stats_path || !sheet || !sheet->filename || !texture)
+        return;
+
+    FILE *fp = fopen(stats_path, "a");
+    if(!fp)
+        return;
+    fprintf(fp, "sheet=%s instances=%zu nrows=%zu ncols=%zu nframes=%zu texture=%lux%lu\n",
+        sheet->filename, nents, sheet->nrows, sheet->ncols, sheet->nframes,
+        (unsigned long)texture.width, (unsigned long)texture.height);
+    fclose(fp);
+}
+
+static void render_sprite_batch(struct sprite_desc *sprites, const size_t *nsprites,
+                                const struct camera *cam)
+{
+    if(!sprites || !nsprites || *nsprites == 0 || !cam)
+        return;
+    if(!s_have_scene_view || !s_have_scene_proj)
+        return;
+
+    struct metal_sprite_draw_call draws[METAL_MAX_SPRITE_DRAWS];
+    size_t ndraws = 0;
+    sort_sprites_by_sheet(sprites, *nsprites, draws, &ndraws);
+    if(ndraws == 0)
+        return;
+
+    Camera_TickFinishPerspective((struct camera *)cam);
+    vec3_t dir = Camera_GetDir(cam);
+
+    frame_begin();
+    if(!s_frame_encoder)
+        return;
+    id<MTLRenderPipelineState> pipeline = ensure_sprite_pipeline(frame_uses_msaa());
+    if(!pipeline)
+        return;
+
+    [s_frame_encoder setRenderPipelineState:pipeline];
+    [s_frame_encoder setDepthStencilState:nil];
+    [s_frame_encoder setCullMode:MTLCullModeNone];
+    [s_frame_encoder setFragmentSamplerState:s_sprite_sampler atIndex:0];
+
+    for(size_t i = 0; i < ndraws; i++) {
+        struct metal_sprite_draw_call draw = draws[i];
+        const struct sprite_sheet_desc *sheet = &sprites[draw.begin_idx].sheet;
+        if(!sheet->filename)
+            continue;
+
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/assets/sprites/%s", g_basepath, sheet->filename);
+        id<MTLTexture> texture = sprite_texpath_get_or_load(path);
+        if(!texture)
+            continue;
+
+        size_t nents = draw.end_idx - draw.begin_idx + 1;
+        if(nents > METAL_MAX_SPRITES)
+            nents = METAL_MAX_SPRITES;
+        log_sprite_draw_stats(sheet, texture, nents);
+
+        struct metal_sprite_desc descs[METAL_MAX_SPRITES];
+        for(size_t j = 0; j < nents; j++) {
+            const struct sprite_desc *src = &sprites[draw.begin_idx + j];
+            descs[j] = (struct metal_sprite_desc){
+                .ws_pos = {src->ws_pos.x, src->ws_pos.y, src->ws_pos.z},
+                .pad0 = 0.0f,
+                .ws_size = {src->ws_size.x, src->ws_size.y},
+                .frame_idx = src->frame,
+                .pad1 = 0.0f,
+            };
+        }
+
+        id<MTLBuffer> sprite_buffer = [s_device newBufferWithBytes:descs
+            length:nents * sizeof(descs[0]) options:MTLResourceStorageModeShared];
+        if(!sprite_buffer)
+            continue;
+
+        struct metal_sprite_uniforms uniforms = {
+            .view = s_scene_view,
+            .projection = s_scene_proj,
+            .view_dir = {dir.x, dir.y, dir.z},
+            .sprite_nrows = (uint32_t)MAX(sheet->nrows, 1),
+            .sprite_ncols = (uint32_t)MAX(sheet->ncols, 1),
+        };
+        id<MTLBuffer> uniform_buffer = [s_device newBufferWithBytes:&uniforms
+            length:sizeof(uniforms) options:MTLResourceStorageModeShared];
+        if(!uniform_buffer)
+            continue;
+
+        [s_frame_encoder setVertexBuffer:uniform_buffer offset:0 atIndex:0];
+        [s_frame_encoder setVertexBuffer:sprite_buffer offset:0 atIndex:1];
+        [s_frame_encoder setFragmentBuffer:uniform_buffer offset:0 atIndex:0];
+        [s_frame_encoder setFragmentTexture:texture atIndex:0];
+        [s_frame_encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                            vertexStart:0
+                            vertexCount:6
+                          instanceCount:nents];
+    }
 }
 
 static void fill_black_rgba(unsigned char *dst, size_t npixels)
@@ -3024,7 +4284,7 @@ static void render_skybox_to_encoder(id<MTLRenderCommandEncoder> encoder,
         M_GetResolution(map, &res);
         const float map_width = res.chunk_w * res.tile_w * X_COORDS_PER_TILE;
         const float map_height = res.chunk_h * res.tile_h * Z_COORDS_PER_TILE;
-        const float scale = MAX(map_width, map_height) / (10.0f * 2.0f);
+        const float scale = MAX(map_width, map_height) / 2.0f;
         PFM_Mat4x4_MakeScale(scale, scale, scale, &model);
     } else {
         PFM_Mat4x4_Identity(&model);
@@ -3047,7 +4307,7 @@ static void render_skybox_to_encoder(id<MTLRenderCommandEncoder> encoder,
     id<MTLDepthStencilState> depth_state = ensure_depth_state(false);
     if(depth_state)
         [encoder setDepthStencilState:depth_state];
-    [encoder setCullMode:MTLCullModeFront];
+    [encoder setCullMode:scaled ? MTLCullModeNone : MTLCullModeFront];
     [encoder setFrontFacingWinding:MTLWindingCounterClockwise];
     [encoder setVertexBuffer:s_skybox_vertex_buffer offset:0 atIndex:0];
     [encoder setVertexBuffer:uniform_buffer offset:0 atIndex:1];
@@ -3218,6 +4478,33 @@ static void update_water_mask(const struct map *map, const struct map_resolution
     free(mask);
 }
 
+static void set_minimap_map_uniforms(const struct map_resolution *res)
+{
+    if(!res)
+        return;
+
+    s_map_pos = (vector_float2){
+        (res->chunk_w * res->tile_w * X_COORDS_PER_TILE) / 2.0f,
+        (res->chunk_h * res->tile_h * Z_COORDS_PER_TILE * -1.0f) / 2.0f,
+    };
+    s_map_tile_world_size = (vector_float2){
+        res->field_w / res->tile_w,
+        res->field_h / res->tile_h,
+    };
+    s_map_chunk_size = (vector_uint2){
+        (uint32_t)res->chunk_w,
+        (uint32_t)res->chunk_h,
+    };
+    s_map_tiles_per_chunk = (vector_uint2){
+        (uint32_t)res->tile_w,
+        (uint32_t)res->tile_h,
+    };
+
+    size_t num_splats = 0;
+    struct splatmap empty = {0};
+    update_splat_indices(&num_splats, &empty);
+}
+
 static void render_terrain_draw(const struct render_private *priv, const mat4x4_t *model)
 {
     if(!priv || !priv->metal_is_terrain)
@@ -3291,6 +4578,62 @@ static bool ensure_water_scene_textures(void)
         && ensure_water_target_texture(&s_water_refraction_depth_texture, MTLPixelFormatDepth32Float, width, height, depth_usage);
 }
 
+static void water_reflection_dump_request_if_needed(id<MTLTexture> texture)
+{
+    const char *path = getenv("PF_METAL_WATER_REFLECTION_DUMP_RGBA8_PATH");
+    if(!path || !*path || !texture || !s_frame_command_buffer)
+        return;
+
+    const size_t bytes_per_pixel = 4;
+    NSUInteger bpr = texture.width * bytes_per_pixel;
+    NSUInteger total = bpr * texture.height;
+    if(!s_water_reflection_dump_buffer || [s_water_reflection_dump_buffer length] < total) {
+        s_water_reflection_dump_buffer = [s_device newBufferWithLength:total
+            options:MTLResourceStorageModeShared];
+    }
+    if(!s_water_reflection_dump_buffer)
+        return;
+
+    id<MTLBlitCommandEncoder> blit = [s_frame_command_buffer blitCommandEncoder];
+    if(!blit)
+        return;
+    [blit copyFromTexture:texture
+              sourceSlice:0
+              sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0)
+               sourceSize:MTLSizeMake(texture.width, texture.height, 1)
+                 toBuffer:s_water_reflection_dump_buffer
+        destinationOffset:0
+   destinationBytesPerRow:bpr
+ destinationBytesPerImage:total];
+    [blit endEncoding];
+
+    snprintf(s_water_reflection_dump_path, sizeof(s_water_reflection_dump_path), "%s", path);
+    s_water_reflection_dump_width = texture.width;
+    s_water_reflection_dump_height = texture.height;
+    s_water_reflection_dump_bpr = bpr;
+    s_water_reflection_dump_pending = true;
+}
+
+static void water_reflection_dump_finish_if_pending(void)
+{
+    if(!s_water_reflection_dump_pending || !s_water_reflection_dump_buffer)
+        return;
+
+    FILE *fp = fopen(s_water_reflection_dump_path, "wb");
+    if(fp) {
+        fwrite([s_water_reflection_dump_buffer contents], 1,
+            s_water_reflection_dump_bpr * s_water_reflection_dump_height, fp);
+        fclose(fp);
+        fprintf(stderr, "PF_METAL_WATER_REFLECTION_DUMP_RGBA8 wrote %llux%llu BGRA8 raw to %s\n",
+            (unsigned long long)s_water_reflection_dump_width,
+            (unsigned long long)s_water_reflection_dump_height,
+            s_water_reflection_dump_path);
+    }
+
+    s_water_reflection_dump_pending = false;
+}
+
 static void render_water_scene_terrain(const struct render_input *in,
                                        const struct camera *cam,
                                        const struct camera *skybox_cam,
@@ -3341,6 +4684,9 @@ static void render_water_scene_terrain(const struct render_input *in,
 
     [s_water_scene_encoder endEncoding];
     s_water_scene_encoder = nil;
+
+    if(enabled && clip_mode == METAL_WATER_CLIP_KEEP_ABOVE && color == s_water_reflection_texture)
+        water_reflection_dump_request_if_needed(color);
 }
 
 static void render_water_scene_textures(const struct render_input *in,
@@ -3367,11 +4713,12 @@ static void render_water_scene_textures(const struct render_input *in,
 
     const bool refract_on = refraction ? *refraction : true;
     const bool reflect_on = reflection ? *reflection : true;
-    s_shadows_enabled = false;
+    s_shadows_enabled = saved_shadows && in->shadows;
 
     render_water_scene_terrain(in, in->cam, NULL, s_water_refraction_texture, s_water_refraction_depth_texture,
         MTLClearColorMake(0.0, 0.0, 0.0, 1.0), refract_on, METAL_WATER_CLIP_KEEP_BELOW);
 
+    s_shadows_enabled = false;
     struct camera *reflect_cam = Camera_New();
     if(reflect_cam) {
         vec3_t cam_pos = Camera_GetPos(in->cam);
@@ -3382,7 +4729,7 @@ static void render_water_scene_textures(const struct render_input *in,
         Camera_SetDir(reflect_cam, cam_dir);
         Camera_TickFinishPerspective(reflect_cam);
 
-        render_water_scene_terrain(in, in->cam, reflect_cam, s_water_reflection_texture, s_water_reflection_depth_texture,
+        render_water_scene_terrain(in, reflect_cam, reflect_cam, s_water_reflection_texture, s_water_reflection_depth_texture,
             MTLClearColorMake(0.2, 0.3, 0.3, 1.0), reflect_on, METAL_WATER_CLIP_KEEP_ABOVE);
         Camera_Free(reflect_cam);
     }
@@ -3401,6 +4748,17 @@ static void render_water_scene_textures(const struct render_input *in,
 
 static float metal_water_move_factor(void)
 {
+    const char *fixed_phase = getenv("PF_RENDER_WATER_MOVE_FACTOR");
+    if(fixed_phase && *fixed_phase) {
+        char *end = NULL;
+        float parsed = strtof(fixed_phase, &end);
+        if(end != fixed_phase) {
+            float intpart = 0.0f;
+            float phase = modff(parsed, &intpart);
+            return phase < 0.0f ? phase + 1.0f : phase;
+        }
+    }
+
     uint32_t curr = SDL_GetTicks();
     uint32_t delta = curr - s_water_prev_frame_tick;
     s_water_prev_frame_tick = curr;
@@ -3490,14 +4848,14 @@ static void render_water_surface(const struct render_input *in, const bool *refr
         .water_texture_params = {
             s_layer.drawableSize.width,
             s_layer.drawableSize.height,
-            (reflection && *reflection && s_water_reflection_texture) ? 1.0f : 0.0f,
-            (refraction && *refraction && s_water_refraction_texture) ? 1.0f : 0.0f,
+            s_water_reflection_texture ? 1.0f : 0.0f,
+            s_water_refraction_texture ? 1.0f : 0.0f,
         },
         .water_depth_params = {
             CAM_Z_NEAR_DIST,
             CONFIG_DRAWDIST,
             0.00025f,
-            (refraction && *refraction && s_water_refraction_depth_texture) ? 1.0f : 0.0f,
+            s_water_refraction_depth_texture ? 1.0f : 0.0f,
         },
         .light_color = {s_light_color.x, s_light_color.y, s_light_color.z, 1.0f},
         .light_pos = {s_light_pos.x, s_light_pos.y, s_light_pos.z, 1.0f},
@@ -3745,7 +5103,7 @@ static void render_static_vertex_stream(const struct render_private *priv,
         .effect_params = {
             (float)mutable_priv->metal_material_texture_count,
             raw_material_debug_enabled() ? 1.0f : 0.0f,
-            0.0f,
+            (priv->uses_pose_buffer || mutable_priv->metal_materials_have_cutout_alpha) ? 1.0f : 0.0f,
             0.0f,
         },
         .shadow_params = {
@@ -3784,6 +5142,7 @@ static void render_static_vertex_stream(const struct render_private *priv,
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
     }
+    bind_shadow_screen_probe_resources(encoder, 2, 2, 3);
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                 vertexStart:0
                 vertexCount:vertex_count];
@@ -3832,7 +5191,7 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
         .effect_params = {
             (float)mutable_priv->metal_material_texture_count,
             raw_material_debug_enabled() ? 1.0f : 0.0f,
-            0.0f,
+            mutable_priv->metal_materials_have_cutout_alpha ? 1.0f : 0.0f,
             0.0f,
         },
         .shadow_params = {
@@ -3871,6 +5230,7 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
     }
+    bind_shadow_screen_probe_resources(encoder, 2, 2, 3);
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                 vertexStart:0
                 vertexCount:priv->mesh.num_verts];
@@ -4402,19 +5762,60 @@ static void render_minimap_bake(const struct map *map, void **chunk_rprivates, m
 
     struct map_resolution res;
     M_GetResolution(map, &res);
+    set_minimap_map_uniforms(&res);
+    update_water_mask(map, &res);
+    s_minimap_bake_pass_active = true;
     for(int r = 0; r < res.chunk_h; r++) {
     for(int c = 0; c < res.chunk_w; c++) {
         size_t idx = r * res.chunk_w + c;
         draw_terrain_to_encoder(encoder, chunk_rprivates[idx], &chunk_model_mats[idx], view, proj);
     }}
+    s_minimap_bake_pass_active = false;
 
     [encoder endEncoding];
     [command_buffer commit];
     [command_buffer waitUntilCompleted];
 }
 
+static MTLScissorRect minimap_chunk_scissor(const struct map_resolution *res,
+                                            const int *chunk_r,
+                                            const int *chunk_c)
+{
+    if(!res || !chunk_r || !chunk_c || res->chunk_w <= 0 || res->chunk_h <= 0)
+        return (MTLScissorRect){0, 0, METAL_MINIMAP_RES, METAL_MINIMAP_RES};
+
+    float chunk_width_px = fminf((float)METAL_MINIMAP_RES / (float)res->chunk_w,
+                                 (float)METAL_MINIMAP_RES / (float)res->chunk_h);
+    float center = (float)METAL_MINIMAP_RES / 2.0f;
+    float center_rel_r = (float)(*chunk_r) - (float)res->chunk_h / 2.0f;
+    float center_rel_c = (float)(*chunk_c) - (float)res->chunk_w / 2.0f;
+    float gl_x = center + center_rel_c * chunk_width_px;
+    float gl_y = center + center_rel_r * chunk_width_px;
+    float metal_y = (float)METAL_MINIMAP_RES - (gl_y + chunk_width_px);
+
+    int x0 = (int)floorf(gl_x);
+    int y0 = (int)floorf(metal_y);
+    int x1 = (int)ceilf(gl_x + chunk_width_px);
+    int y1 = (int)ceilf(metal_y + chunk_width_px);
+
+    if(x0 < 0) x0 = 0;
+    if(y0 < 0) y0 = 0;
+    if(x1 > METAL_MINIMAP_RES) x1 = METAL_MINIMAP_RES;
+    if(y1 > METAL_MINIMAP_RES) y1 = METAL_MINIMAP_RES;
+    if(x1 < x0) x1 = x0;
+    if(y1 < y0) y1 = y0;
+
+    return (MTLScissorRect){
+        .x = (NSUInteger)x0,
+        .y = (NSUInteger)y0,
+        .width = (NSUInteger)(x1 - x0),
+        .height = (NSUInteger)(y1 - y0),
+    };
+}
+
 static void render_minimap_update_chunk(const struct map *map, void *chunk_rprivate,
-                                        mat4x4_t *chunk_model)
+                                        mat4x4_t *chunk_model,
+                                        const int *chunk_r, const int *chunk_c)
 {
     if(!map || !chunk_rprivate || !chunk_model || !s_minimap_texture)
         return;
@@ -4444,7 +5845,14 @@ static void render_minimap_update_chunk(const struct map *map, void *chunk_rpriv
         .zfar = 1.0
     };
     [encoder setViewport:viewport];
+    struct map_resolution res;
+    M_GetResolution(map, &res);
+    set_minimap_map_uniforms(&res);
+    update_water_mask(map, &res);
+    [encoder setScissorRect:minimap_chunk_scissor(&res, chunk_r, chunk_c)];
+    s_minimap_bake_pass_active = true;
     draw_terrain_to_encoder(encoder, chunk_rprivate, chunk_model, view, proj);
+    s_minimap_bake_pass_active = false;
     [encoder endEncoding];
     [command_buffer commit];
     [command_buffer waitUntilCompleted];
@@ -4549,7 +5957,7 @@ static void render_minimap(const struct map *map, const struct camera *cam,
 
     struct ui_vert quad[6];
     build_minimap_quad(&model, quad);
-    render_ui_triangles(quad, 6, s_minimap_texture);
+    render_minimap_triangles(quad, 6, s_minimap_texture, map);
 
     if(cam)
         render_minimap_frustum(map, cam, &model);
@@ -5481,20 +6889,19 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
 
 static void dispatch_or_drop_cmd(struct rcmd cmd)
 {
-    if(cmd.func == R_GL_BeginFrame) {
+    if(cmd.func == R_Cmd_BeginFrame) {
         R_Metal_FrameBegin();
         return;
     }
-    if(cmd.func == R_GL_EndFrame) {
+    if(cmd.func == R_Cmd_EndFrame) {
         R_Metal_FrameEnd();
         return;
     }
-    if(cmd.func == R_GL_SetScreenspaceDrawMode
-    || cmd.func == R_GL_SwapchainPresentLast
-    || cmd.func == R_GL_DrawLoadingScreen) {
+    if(cmd.func == R_Cmd_SetScreenspaceDrawMode
+    || cmd.func == R_Cmd_DrawLoadingScreen) {
         return;
     }
-    if(cmd.func == R_GL_SetViewMatAndPos) {
+    if(cmd.func == R_Cmd_SetViewMatAndPos) {
         s_scene_view = matrix_from_pf_mat4(cmd.args[0]);
         if(cmd.args[1]) {
             const vec3_t *pos = cmd.args[1];
@@ -5503,30 +6910,30 @@ static void dispatch_or_drop_cmd(struct rcmd cmd)
         s_have_scene_view = true;
         return;
     }
-    if(cmd.func == R_GL_SetProj) {
+    if(cmd.func == R_Cmd_SetProj) {
         s_scene_proj = matrix_from_pf_mat4(cmd.args[0]);
         s_have_scene_proj = true;
         return;
     }
-    if(cmd.func == R_GL_SetAmbientLightColor) {
+    if(cmd.func == R_Cmd_SetAmbientLightColor) {
         const vec3_t *color = cmd.args[0];
         if(color)
             s_light_ambient = (vector_float3){color->x, color->y, color->z};
         return;
     }
-    if(cmd.func == R_GL_SetLightEmitColor) {
+    if(cmd.func == R_Cmd_SetLightEmitColor) {
         const vec3_t *color = cmd.args[0];
         if(color)
             s_light_color = (vector_float3){color->x, color->y, color->z};
         return;
     }
-    if(cmd.func == R_GL_SetLightPos) {
+    if(cmd.func == R_Cmd_SetLightPos) {
         const vec3_t *pos = cmd.args[0];
         if(pos)
             s_light_pos = (vector_float3){pos->x, pos->y, pos->z};
         return;
     }
-    if(cmd.func == R_GL_AnimSetUniforms) {
+    if(cmd.func == R_Cmd_AnimSetUniforms) {
         const uint32_t *uid = cmd.args[2];
         if(uid)
             set_current_anim_uid(*uid);
@@ -5536,39 +6943,43 @@ static void dispatch_or_drop_cmd(struct rcmd cmd)
         }
         return;
     }
-    if(cmd.func == R_GL_MapInit) {
+    if(cmd.func == R_Cmd_MapInit) {
         update_terrain_textures(cmd.args[0], cmd.args[1]);
         ensure_heightmap_buffer();
+        ensure_splatmap_buffer();
+        ensure_splat_indices_buffer();
         return;
     }
-    if(cmd.func == R_GL_WaterInit) {
+    if(cmd.func == R_Cmd_WaterInit) {
         init_water_resources();
         return;
     }
-    if(cmd.func == R_GL_WaterShutdown) {
+    if(cmd.func == R_Cmd_WaterShutdown) {
         s_water_dudv_texture = nil;
         s_water_normal_texture = nil;
         return;
     }
-    if(cmd.func == R_GL_SkyboxLoad) {
+    if(cmd.func == R_Cmd_SkyboxLoad) {
         load_metal_skybox(cmd.args[0], cmd.args[1]);
         return;
     }
-    if(cmd.func == R_GL_SkyboxFree) {
+    if(cmd.func == R_Cmd_SkyboxFree) {
         free_metal_skybox();
         return;
     }
-    if(cmd.func == R_GL_DrawSkybox) {
+    if(cmd.func == R_Cmd_DrawSkybox) {
         render_metal_skybox(cmd.args[0]);
         return;
     }
-    if(cmd.func == R_GL_DrawWater) {
+    if(cmd.func == R_Cmd_DrawWater) {
         render_water_surface(cmd.args[0], cmd.args[1], cmd.args[2]);
         return;
     }
-    if(cmd.func == R_GL_MapBegin) {
+    if(cmd.func == R_Cmd_MapBegin) {
         const bool *shadows = cmd.args[0];
         const vec2_t *pos = cmd.args[1];
+        const size_t *num_splats = cmd.args[2];
+        const struct splatmap *splatmap = cmd.args[3];
         const struct map_resolution *res = cmd.args[4];
         const struct map *map = cmd.args[5];
         s_shadows_enabled = shadows ? *shadows : false;
@@ -5585,72 +6996,89 @@ static void dispatch_or_drop_cmd(struct rcmd cmd)
             (uint32_t)res->tile_w,
             (uint32_t)res->tile_h,
         };
+        update_splat_indices(num_splats, splatmap);
         update_water_mask(map, res);
         return;
     }
-    if(cmd.func == R_GL_MapEnd) {
+    if(cmd.func == R_Cmd_MapEnd) {
         return;
     }
-    if(cmd.func == R_GL_MapShutdown) {
+    if(cmd.func == R_Cmd_MapShutdown) {
         s_terrain_texture_array = nil;
         s_terrain_texture_count = 0;
         s_water_buffer = nil;
         s_fog_buffer = nil;
         s_heightmap_buffer = nil;
+        s_splatmap_buffer = nil;
+        s_splat_indices_buffer = nil;
         return;
     }
-    if(cmd.func == R_GL_MapUpdateFog) {
+    if(cmd.func == R_Cmd_MapUpdateFog) {
         update_fog_texture(cmd.args[0], cmd.args[1]);
         return;
     }
-    if(cmd.func == R_GL_TilePatchVertsBlend
-    || cmd.func == R_GL_TilePatchVertsSmooth
-    || cmd.func == R_GL_TileUpdate) {
+    if(cmd.func == R_Cmd_TilePatchVertsBlend
+    || cmd.func == R_Cmd_TilePatchVertsSmooth
+    || cmd.func == R_Cmd_TileUpdate) {
         struct render_private *priv = cmd.args[0];
-        render_dispatch_cmd(cmd);
+        if(cmd.func == R_Cmd_TilePatchVertsBlend) {
+            R_TilePatchVertsBlend_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        }else if(cmd.func == R_Cmd_TilePatchVertsSmooth) {
+            R_TilePatchVertsSmooth_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        }else{
+            R_TileUpdate_Impl(cmd.args[0], cmd.args[1], cmd.args[2]);
+        }
         if(priv)
             release_retained_metal_object(&priv->metal_terrain_vertex_buffer);
         return;
     }
-    if(cmd.func == R_GL_SetShadowsEnabled) {
+    if(cmd.func == R_Cmd_SetShadowsEnabled) {
         s_shadows_enabled = cmd.args[0] ? *(const bool *)cmd.args[0] : false;
         return;
     }
-    if(cmd.func == R_GL_DepthPassBegin) {
+    if(cmd.func == R_Cmd_DepthPassBegin) {
         shadow_pass_begin(cmd.args[0], cmd.args[1], cmd.args[2]);
         return;
     }
-    if(cmd.func == R_GL_DepthPassEnd) {
+    if(cmd.func == R_Cmd_DepthPassEnd) {
         shadow_pass_end();
         return;
     }
-    if(cmd.func == R_GL_RenderDepthMap) {
-        render_shadow_depth_draw(cmd.args[0], cmd.args[1]);
+    if(cmd.func == R_Cmd_RenderDepthMap) {
+        const struct render_private *priv = cmd.args[0];
+        uint32_t owner_uid = METAL_SHADOW_OWNER_UNKNOWN_UID;
+        if(priv && priv->metal_is_terrain)
+            owner_uid = METAL_SHADOW_OWNER_TERRAIN_UID;
+        else if(priv && priv->metal_is_anim_mesh && s_have_anim_uid)
+            owner_uid = s_curr_anim_uid;
+        render_shadow_depth_draw(priv, cmd.args[1], owner_uid);
         return;
     }
-    if(cmd.func == R_GL_Batch_AllocChunks
-    || cmd.func == R_GL_Batch_Reset) {
+    if(cmd.func == R_Cmd_Batch_AllocChunks
+    || cmd.func == R_Cmd_Batch_Reset) {
         return;
     }
-    if(cmd.func == R_GL_Batch_RenderDepthMap) {
+    if(cmd.func == R_Cmd_Batch_RenderDepthMap) {
         const struct render_input *in = cmd.args[0];
-        render_shadow_batched_anim_entities(&in->light_vis_anim);
-        render_shadow_batched_stat_entities(&in->light_vis_stat);
+        if(!getenv("PF_SHADOW_SKIP_ANIM"))
+            render_shadow_batched_anim_entities(&in->light_vis_anim);
+        if(!getenv("PF_SHADOW_SKIP_STATIC"))
+            render_shadow_batched_stat_entities(&in->light_vis_stat);
         return;
     }
-    if(cmd.func == R_GL_Batch_Draw) {
+    if(cmd.func == R_Cmd_Batch_Draw) {
         const struct render_input *in = cmd.args[0];
         render_batched_anim_entities(&in->cam_vis_anim);
         render_batched_stat_entities(&in->cam_vis_stat);
         return;
     }
-    if(cmd.func == R_GL_Batch_DrawWithID) {
+    if(cmd.func == R_Cmd_Batch_DrawWithID) {
         const struct render_input *in = cmd.args[0];
         render_batched_anim_entities(&in->cam_vis_anim);
         render_batched_stat_entities(&in->cam_vis_stat);
         return;
     }
-    if(cmd.func == R_GL_Draw) {
+    if(cmd.func == R_Cmd_Draw) {
         const struct render_private *priv = cmd.args[0];
         bool translucent = cmd.args[2] ? *(const bool *)cmd.args[2] : false;
         if(priv && priv->metal_is_terrain) {
@@ -5666,80 +7094,96 @@ static void dispatch_or_drop_cmd(struct rcmd cmd)
         }
         return;
     }
-    if(cmd.func == R_GL_DrawSelectionCircle) {
+    if(cmd.func == R_Cmd_DrawSelectionCircle) {
         render_selection_circle(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
         return;
     }
-    if(cmd.func == R_GL_DrawSelectionRectangle) {
+    if(cmd.func == R_Cmd_DrawSelectionRectangle) {
         render_selection_rectangle(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
         return;
     }
-    if(cmd.func == R_GL_DrawLine) {
+    if(cmd.func == R_Cmd_DrawLine) {
         render_world_line(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
         return;
     }
-    if(cmd.func == R_GL_DrawQuad) {
+    if(cmd.func == R_Cmd_DrawQuad) {
         render_world_quad(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
         return;
     }
-    if(cmd.func == R_GL_DrawFlowField) {
+    if(cmd.func == R_Cmd_DrawFlowField) {
         render_flow_field(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
         return;
     }
-    if(cmd.func == R_GL_DrawCombinedHRVO) {
+    if(cmd.func == R_Cmd_DrawCombinedHRVO) {
         render_combined_hrvo(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
         return;
     }
-    if(cmd.func == R_GL_DrawOrigin) {
+    if(cmd.func == R_Cmd_DrawOrigin) {
         render_debug_origin(cmd.args[1]);
         return;
     }
-    if(cmd.func == R_GL_DrawRay) {
+    if(cmd.func == R_Cmd_DrawRay) {
         render_debug_ray(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
         return;
     }
-    if(cmd.func == R_GL_DrawOBB) {
+    if(cmd.func == R_Cmd_DrawOBB) {
         render_debug_obb(cmd.args[0], cmd.args[1]);
         return;
     }
-    if(cmd.func == R_GL_DrawBox2D) {
+    if(cmd.func == R_Cmd_DrawBox2D) {
         render_box2d(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
         return;
     }
-    if(cmd.func == R_GL_DrawHealthbars) {
+    if(cmd.func == R_Cmd_DrawHealthbars) {
         render_healthbars(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
         return;
     }
-    if(cmd.func == R_GL_DrawMapOverlayQuads) {
+    if(cmd.func == R_Cmd_DrawMapOverlayQuads) {
         render_map_overlay_quads(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4], cmd.args[5]);
         return;
     }
-    if(cmd.func == R_GL_MinimapBake) {
+    if(cmd.func == R_Cmd_MinimapBake) {
         render_minimap_bake(cmd.args[0], cmd.args[1], cmd.args[2]);
         return;
     }
-    if(cmd.func == R_GL_MinimapUpdateChunk) {
-        render_minimap_update_chunk(cmd.args[0], cmd.args[1], cmd.args[2]);
+    if(cmd.func == R_Cmd_MinimapUpdateChunk) {
+        render_minimap_update_chunk(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
         return;
     }
-    if(cmd.func == R_GL_MinimapRender) {
+    if(cmd.func == R_Cmd_MinimapRender) {
         render_minimap(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4]);
         return;
     }
-    if(cmd.func == R_GL_MinimapRenderUnits) {
+    if(cmd.func == R_Cmd_MinimapRenderUnits) {
         render_minimap_units(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4], cmd.args[5]);
         return;
     }
-    if(cmd.func == R_GL_MinimapFree) {
+    if(cmd.func == R_Cmd_MinimapFree) {
         render_minimap_free();
         return;
     }
+    if(cmd.func == R_Cmd_SpriteRenderBatch) {
+        render_sprite_batch(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_Init) {
+        R_Metal_UI_Init();
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_Shutdown) {
+        R_Metal_UI_Shutdown();
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_Render) {
+        R_Metal_UI_Render(cmd.args[0]);
+        return;
+    }
+    if(cmd.func == R_Cmd_UI_UploadFontAtlas) {
+        R_Metal_UI_UploadFontAtlas(cmd.args[0], cmd.args[1], cmd.args[2]);
+        return;
+    }
 
-    if(cmd.func == R_GL_UI_Init
-    || cmd.func == R_GL_UI_Shutdown
-    || cmd.func == R_GL_UI_Render
-    || cmd.func == R_GL_UI_UploadFontAtlas
-    || cmd.func == R_Metal_Backend_CommandSetSwapInterval
+    if(cmd.func == R_Metal_Backend_CommandSetSwapInterval
     || cmd.func == R_Metal_Backend_CommandSetDebugLogMask
     || cmd.func == R_Metal_Backend_CommandSetTraceGPU) {
         render_dispatch_cmd(cmd);
@@ -5793,6 +7237,7 @@ static bool render_init_ctx(struct render_init_arg *arg)
     strncpy(s_info_renderer, name ? name : "Metal Device", sizeof(s_info_renderer) - 1);
     strncpy(s_info_version, "Metal", sizeof(s_info_version) - 1);
     strncpy(s_info_sl_version, "MSL", sizeof(s_info_sl_version) - 1);
+    strncpy(s_info_msaa_samples, "1", sizeof(s_info_msaa_samples) - 1);
     s_have_scene_view = false;
     s_have_scene_proj = false;
     s_scene_view_pos = (vector_float3){0.0f, 0.0f, 0.0f};
@@ -5805,6 +7250,8 @@ static bool render_init_ctx(struct render_init_arg *arg)
     PFM_Mat4x4_Identity(&identity);
     s_curr_anim_normal_transform = matrix_from_pf_mat4(&identity);
     s_shadow_pass_active = false;
+    s_shadow_owner_pass_active = false;
+    s_minimap_bake_pass_active = false;
     s_shadow_map_valid = false;
     s_shadows_enabled = false;
     s_frame_inflight_reserved = false;
@@ -5897,6 +7344,7 @@ const char *R_Metal_Backend_GetInfo(enum render_info attr)
     case RENDER_INFO_VERSION:    return s_info_version;
     case RENDER_INFO_SL_VERSION: return s_info_sl_version;
     case RENDER_INFO_BACKEND:    return "METAL";
+    case RENDER_INFO_MSAA_SAMPLES: return render_info_msaa_samples();
     default: assert(0); return NULL;
     }
 }

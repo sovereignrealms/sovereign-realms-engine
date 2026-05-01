@@ -391,7 +391,8 @@ static PyMethodDef pf_module_methods[] = {
     {"get_render_info", 
     (PyCFunction)PyPf_get_render_info, METH_NOARGS,
     "Returns a dictionary describing the renderer context. It will have the string keys "
-    "'renderer', 'version', 'shading_language_version', and 'vendor'."},
+    "'renderer', 'version', 'shading_language_version', 'vendor', 'backend', "
+    "and the integer key 'msaa_samples'."},
 
     {"get_nav_perfstats", 
     (PyCFunction)PyPf_get_nav_perfstats, METH_NOARGS,
@@ -1489,6 +1490,7 @@ static PyObject *PyPf_get_render_info(PyObject *self)
     rval |= PyDict_SetItemString(ret, "renderer", Py_BuildValue("s", R_GetInfo(RENDER_INFO_RENDERER)));
     rval |= PyDict_SetItemString(ret, "shading_language_version", Py_BuildValue("s", R_GetInfo(RENDER_INFO_SL_VERSION)));
     rval |= PyDict_SetItemString(ret, "backend", Py_BuildValue("s", R_GetInfo(RENDER_INFO_BACKEND)));
+    rval |= PyDict_SetItemString(ret, "msaa_samples", Py_BuildValue("i", atoi(R_GetInfo(RENDER_INFO_MSAA_SAMPLES))));
     assert(0 == rval);
 
     return ret;

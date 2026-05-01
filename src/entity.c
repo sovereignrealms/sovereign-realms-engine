@@ -200,7 +200,7 @@ static struct result ping_task(void *arg)
         if(flags & ENTITY_FLAG_BUILDING) {
 
             R_PushCmd((struct rcmd){
-                .func = R_GL_DrawSelectionRectangle,
+                .func = R_Cmd_DrawSelectionRectangle,
                 .nargs = 4,
                 .args = {
                     R_PushArg(&obb, sizeof(obb)),
@@ -212,7 +212,7 @@ static struct result ping_task(void *arg)
         }else{
 
             R_PushCmd((struct rcmd){
-                .func = R_GL_DrawSelectionCircle,
+                .func = R_Cmd_DrawSelectionCircle,
                 .nargs = 5,
                 .args = {
                     R_PushArg(&pos, sizeof(pos)),

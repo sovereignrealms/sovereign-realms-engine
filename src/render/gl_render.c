@@ -92,7 +92,7 @@ static inline void gl_set_line_width_compat(GLfloat requested)
 /* EXTERN FUNCTIONS                                                          */
 /*****************************************************************************/
 
-void R_GL_Init(struct render_private *priv, const char *shader, const struct vertex *vbuff)
+void R_GL_Init_Impl(struct render_private *priv, const char *shader, const struct vertex *vbuff)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -206,7 +206,7 @@ void R_GL_Init(struct render_private *priv, const char *shader, const struct ver
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_Draw(const void *render_private, mat4x4_t *model, const bool *translucent)
+void R_GL_Draw_Impl(const void *render_private, mat4x4_t *model, const bool *translucent)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -250,7 +250,7 @@ void R_GL_Draw(const void *render_private, mat4x4_t *model, const bool *transluc
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_BeginFrame(void)
+void R_GL_BeginFrame_Impl(void)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -266,12 +266,12 @@ void R_GL_BeginFrame(void)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_EndFrame(void)
+void R_GL_EndFrame_Impl(void)
 {
     R_GL_SwapchainFinishCommands();
 }
 
-void R_GL_SetViewMatAndPos(const mat4x4_t *view, const vec3_t *pos)
+void R_GL_SetViewMatAndPos_Impl(const mat4x4_t *view, const vec3_t *pos)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -285,7 +285,7 @@ void R_GL_SetViewMatAndPos(const mat4x4_t *view, const vec3_t *pos)
     });
 }
 
-void R_GL_SetProj(const mat4x4_t *proj)
+void R_GL_SetProj_Impl(const mat4x4_t *proj)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -315,7 +315,7 @@ void R_GL_SetClipPlane(const vec4_t plane_eq)
     });
 }
 
-void R_GL_SetAmbientLightColor(const vec3_t *color)
+void R_GL_SetAmbientLightColor_Impl(const vec3_t *color)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -325,7 +325,7 @@ void R_GL_SetAmbientLightColor(const vec3_t *color)
     });
 }
 
-void R_GL_SetLightEmitColor(const vec3_t *color)
+void R_GL_SetLightEmitColor_Impl(const vec3_t *color)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -335,7 +335,7 @@ void R_GL_SetLightEmitColor(const vec3_t *color)
     });
 }
 
-void R_GL_SetLightPos(const vec3_t *pos)
+void R_GL_SetLightPos_Impl(const vec3_t *pos)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -345,7 +345,7 @@ void R_GL_SetLightPos(const vec3_t *pos)
     });
 }
 
-void R_GL_SetScreenspaceDrawMode(void)
+void R_GL_SetScreenspaceDrawMode_Impl(void)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -355,12 +355,12 @@ void R_GL_SetScreenspaceDrawMode(void)
 
     mat4x4_t ortho;
     PFM_Mat4x4_MakeOrthographic(0.0f, width, height, 0.0f, -1.0f, 1.0f, &ortho);
-    R_GL_SetProj(&ortho);
+    R_GL_SetProj_Impl(&ortho);
 
     mat4x4_t identity;
     PFM_Mat4x4_Identity(&identity);
     vec3_t dummy_pos = (vec3_t){0.0f};
-    R_GL_SetViewMatAndPos(&identity, &dummy_pos);
+    R_GL_SetViewMatAndPos_Impl(&identity, &dummy_pos);
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -369,12 +369,12 @@ void R_GL_SetScreenspaceDrawMode(void)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawLoadingScreen(const char *path)
+void R_GL_DrawLoadingScreen_Impl(const char *path)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
 
-    R_GL_SetScreenspaceDrawMode();
+    R_GL_SetScreenspaceDrawMode_Impl();
 
     int width, height;
     Engine_WinDrawableSize(&width, &height);
@@ -415,7 +415,7 @@ void R_GL_DrawLoadingScreen(const char *path)
     GLuint prog = R_GL_Shader_GetProgForName("ui");
     R_GL_Shader_InstallProg(prog);
 
-    R_GL_Texture_GetOrLoad(g_basepath, path, &tex.id);
+    R_GL_Texture_GetOrLoad_Impl(g_basepath, path, &tex.id);
     R_GL_Texture_Bind(&tex, prog);
 
     /* buffer & render */
@@ -430,7 +430,7 @@ void R_GL_DrawLoadingScreen(const char *path)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawSkeleton(mat4x4_t *model, const struct skeleton *skel, const struct camera *cam)
+void R_GL_DrawSkeleton_Impl(mat4x4_t *model, const struct skeleton *skel, const struct camera *cam)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -525,8 +525,8 @@ void R_GL_DrawSkeleton(mat4x4_t *model, const struct skeleton *skel, const struc
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawModelToTexture(const void *render_private, const struct obb *obb, 
-                             struct ent_anim_rstate *anim_state, const char *key)
+void R_GL_DrawModelToTexture_Impl(const void *render_private, const struct obb *obb,
+                                  struct ent_anim_rstate *anim_state, const char *key)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -599,7 +599,7 @@ void R_GL_DrawModelToTexture(const void *render_private, const struct obb *obb,
         PFM_Mat4x4_Inverse((mat4x4_t*)&model, &tmp);
         PFM_Mat4x4_Transpose(&tmp, &normal);
 
-        R_GL_AnimSetUniforms(&normal, &anim_state->desc, &anim_state->uid);
+        R_GL_AnimSetUniforms_Impl(&normal, &anim_state->desc, &anim_state->uid);
     }
     const char *shader = NULL;
     if(anim_state) {
@@ -609,7 +609,7 @@ void R_GL_DrawModelToTexture(const void *render_private, const struct obb *obb,
     }
     R_GL_Shader_Install(shader);
     Camera_TickFinishPerspectiveUpsideDown(cam);
-    R_GL_Draw(priv, (mat4x4_t*)&model, &translucent);
+    R_GL_Draw_Impl(priv, (mat4x4_t*)&model, &translucent);
     R_GL_Texture_AddExisting(key, tex);
 
     /* Cleanup */
@@ -630,7 +630,7 @@ void R_GL_DrawModelToTexture(const void *render_private, const struct obb *obb,
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawOrigin(const void *render_private, mat4x4_t *model)
+void R_GL_DrawOrigin_Impl(const void *render_private, mat4x4_t *model)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -708,8 +708,8 @@ void R_GL_DrawOrigin(const void *render_private, mat4x4_t *model)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawRay(const vec3_t *origin, const vec3_t *dir, mat4x4_t *model, 
-                  const vec3_t *color, const float *t)
+void R_GL_DrawRay_Impl(const vec3_t *origin, const vec3_t *dir, mat4x4_t *model,
+                       const vec3_t *color, const float *t)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -764,7 +764,7 @@ void R_GL_DrawRay(const vec3_t *origin, const vec3_t *dir, mat4x4_t *model,
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawOBB(const struct aabb *aabb, const mat4x4_t *model)
+void R_GL_DrawOBB_Impl(const struct aabb *aabb, const mat4x4_t *model)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -834,8 +834,8 @@ void R_GL_DrawOBB(const struct aabb *aabb, const mat4x4_t *model)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawBox2D(const vec2_t *screen_pos, const vec2_t *signed_size, 
-                    const vec3_t *color, const float *width)
+void R_GL_DrawBox2D_Impl(const vec2_t *screen_pos, const vec2_t *signed_size,
+                         const vec3_t *color, const float *width)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -855,12 +855,12 @@ void R_GL_DrawBox2D(const vec2_t *screen_pos, const vec2_t *signed_size,
     /* Set view and projection matrices for rendering in screen coordinates */
     mat4x4_t ortho;
     PFM_Mat4x4_MakeOrthographic(0.0f, win_width, win_height, 0.0f, -1.0f, 1.0f, &ortho);
-    R_GL_SetProj(&ortho);
+    R_GL_SetProj_Impl(&ortho);
 
     mat4x4_t identity;
     PFM_Mat4x4_Identity(&identity);
     vec3_t dummy_pos = (vec3_t){0.0f};
-    R_GL_SetViewMatAndPos(&identity, &dummy_pos);
+    R_GL_SetViewMatAndPos_Impl(&identity, &dummy_pos);
 
     /* OpenGL setup */
     glGenVertexArrays(1, &VAO);
@@ -904,7 +904,7 @@ void R_GL_DrawBox2D(const vec2_t *screen_pos, const vec2_t *signed_size,
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawNormals(const void *render_private, mat4x4_t *model, const bool *anim)
+void R_GL_DrawNormals_Impl(const void *render_private, mat4x4_t *model, const bool *anim)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1015,8 +1015,8 @@ void R_GL_DumpFBDepth_PPM(const char *filename, const int *width, const int *hei
     PF_FREE(data);
 }
 
-void R_GL_DrawSelectionCircle(const vec2_t *xz, const float *radius, const float *width, 
-                              const vec3_t *color, const struct map *map)
+void R_GL_DrawSelectionCircle_Impl(const vec2_t *xz, const float *radius, const float *width,
+                                   const vec3_t *color, const struct map *map)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1086,8 +1086,8 @@ void R_GL_DrawSelectionCircle(const vec2_t *xz, const float *radius, const float
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawSelectionRectangle(const struct obb *box, const float *width, 
-                                 const vec3_t *color, const struct map *map)
+void R_GL_DrawSelectionRectangle_Impl(const struct obb *box, const float *width,
+                                      const vec3_t *color, const struct map *map)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1196,7 +1196,7 @@ void R_GL_DrawSelectionRectangle(const struct obb *box, const float *width,
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawLine(vec2_t endpoints[], const float *width, const vec3_t *color, const struct map *map)
+void R_GL_DrawLine_Impl(vec2_t endpoints[], const float *width, const vec3_t *color, const struct map *map)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1288,7 +1288,7 @@ void R_GL_DrawLine(vec2_t endpoints[], const float *width, const vec3_t *color, 
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawQuad(vec2_t corners[], const float *width, const vec3_t *color, const struct map *map)
+void R_GL_DrawQuad_Impl(vec2_t corners[], const float *width, const vec3_t *color, const struct map *map)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1301,13 +1301,13 @@ void R_GL_DrawQuad(vec2_t corners[], const float *width, const vec3_t *color, co
     };
 
     for(int i = 0; i < ARR_SIZE(lines); i++)
-        R_GL_DrawLine(lines[i], width, color, map);
+        R_GL_DrawLine_Impl(lines[i], width, color, map);
 
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawMapOverlayQuads(vec2_t *xz_corners, vec3_t *colors, const size_t *count, 
-                              mat4x4_t *model, bool *on_water_surface, const struct map *map)
+void R_GL_DrawMapOverlayQuads_Impl(vec2_t *xz_corners, vec3_t *colors, const size_t *count,
+                                   mat4x4_t *model, bool *on_water_surface, const struct map *map)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1448,8 +1448,8 @@ void R_GL_DrawMapOverlayQuads(vec2_t *xz_corners, vec3_t *colors, const size_t *
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawFlowField(vec2_t *xz_positions, vec2_t *xz_directions, const size_t *count,
-                        mat4x4_t *model, const struct map *map)
+void R_GL_DrawFlowField_Impl(vec2_t *xz_positions, vec2_t *xz_directions, const size_t *count,
+                             mat4x4_t *model, const struct map *map)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1544,8 +1544,8 @@ void R_GL_DrawFlowField(vec2_t *xz_positions, vec2_t *xz_directions, const size_
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawCombinedHRVO(vec2_t *apexes, vec2_t *left_rays, vec2_t *right_rays, 
-                           const size_t *num_vos, const struct map *map)
+void R_GL_DrawCombinedHRVO_Impl(vec2_t *apexes, vec2_t *left_rays, vec2_t *right_rays,
+                                const size_t *num_vos, const struct map *map)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1660,8 +1660,13 @@ void R_GL_GlobalConfig(void)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_TimestampForCookie(uint32_t *cookie, uint64_t *out)
+void R_Cmd_TimestampForCookie(uint32_t *cookie, uint64_t *out)
 {
+#if PF_RENDER_BACKEND_METAL
+    (void)cookie;
+    *out = 0;
+    assert(!"OpenGL timestamp query readback is not available on Metal");
+#else
     GLuint timer_query = *cookie;
 
     GLint avail = GL_FALSE;
@@ -1674,4 +1679,5 @@ void R_GL_TimestampForCookie(uint32_t *cookie, uint64_t *out)
 
     glGetQueryObjectui64v(timer_query, GL_QUERY_RESULT, out);
     glDeleteQueries(1, &timer_query);
+#endif
 }

@@ -44,7 +44,14 @@ class Mage(am.AnimMoveable, ac.AnimCombatable):
             base_dmg=80,
             base_armour=0.10,
             attack_range=50.0,
-            projectile_descriptor=("assets/models/fireball", "fireball.pfobj", (1.0, 1.0, 1.0), 75.0))
+            projectile_descriptor=(
+                "assets/models/fireball",
+                "fireball.pfobj",
+                (1.0, 1.0, 1.0),
+                75.0,
+                (("impact_burst.png", 1, 4, 4), (13.0, 13.0)),
+                (("projectile_trail.png", 1, 4, 4), (18.0, 6.0), 2.0),
+            ))
         self.speed = 20.0
 
     def idle_anim(self):

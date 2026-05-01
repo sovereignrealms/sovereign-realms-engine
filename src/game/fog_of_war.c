@@ -677,7 +677,7 @@ void G_Fog_RenderChunkVisibility(int faction_id, int chunk_r, int chunk_c, mat4x
     size_t count = res.tile_w * res.tile_h;
     bool on_water_surface = true;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(corners_buff)),
@@ -737,7 +737,7 @@ void G_Fog_UpdateVisionState(void)
 
 submit:
     R_PushCmd((struct rcmd){
-        .func = R_GL_MapUpdateFog,
+        .func = R_Cmd_MapUpdateFog,
         .nargs = 2,
         .args = {
             visbuff,

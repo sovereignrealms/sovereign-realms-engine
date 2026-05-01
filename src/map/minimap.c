@@ -291,7 +291,7 @@ bool M_InitMinimap(struct map *map, vec2_t center_pos)
     }}
     
     R_PushCmd((struct rcmd){
-        .func = R_GL_MinimapBake,
+        .func = R_Cmd_MinimapBake,
         .nargs = 3,
         .args = {
             (void*)G_GetPrevTickMap(),
@@ -318,7 +318,7 @@ bool M_UpdateMinimapChunk(const struct map *map, int chunk_r, int chunk_c)
     M_ModelMatrixForChunk(map, (struct chunkpos){chunk_r, chunk_c}, &model);
 
     R_PushCmd((struct rcmd){
-        .func = R_GL_MinimapUpdateChunk,
+        .func = R_Cmd_MinimapUpdateChunk,
         .nargs = 5,
         .args = {
             (void*)G_GetPrevTickMap(),
@@ -336,7 +336,7 @@ void M_FreeMinimap(struct map *map)
     E_Global_Unregister(SDL_MOUSEBUTTONDOWN, on_mouseclick);
     E_Global_Unregister(SDL_MOUSEMOTION,     on_mousemove);
 
-    R_PushCmd((struct rcmd){ R_GL_MinimapFree, 0 });
+    R_PushCmd((struct rcmd){ R_Cmd_MinimapFree, 0 });
     s_mouse_down_in_minimap = false;
 }
 
@@ -395,7 +395,7 @@ void M_RenderMinimap(const struct map *map, const struct camera *cam)
     int len = PFM_Vec2_Len(&ab);
 
     R_PushCmd((struct rcmd){
-        .func = R_GL_MinimapRender,
+        .func = R_Cmd_MinimapRender,
         .nargs = 5,
         .args = {
             (void*)G_GetPrevTickMap(),
@@ -432,7 +432,7 @@ void M_RenderMinimapUnits(const struct map *map, size_t nunits, vec2_t *posbuff,
     memcpy(cbuff, colorbuff, nunits * sizeof(vec3_t));
 
     R_PushCmd((struct rcmd){
-        .func = R_GL_MinimapRenderUnits,
+        .func = R_Cmd_MinimapRenderUnits,
         .nargs = 6,
         .args = {
             (void*)G_GetPrevTickMap(),

@@ -720,7 +720,7 @@ static void n_render_grid_path(struct nav_chunk *chunk, mat4x4_t *chunk_model,
     size_t count = vec_size(path);
     bool on_water_surface = false;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(vec2_t) * 4 * vec_size(path)),
@@ -781,7 +781,7 @@ static void n_render_portals(const struct nav_chunk *chunk, mat4x4_t *chunk_mode
 
     bool on_water_surface = false;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(corners_buff)),
@@ -2449,7 +2449,7 @@ void N_RenderPathableChunk(void *nav_private, mat4x4_t *chunk_model,
     size_t count = FIELD_RES_R * FIELD_RES_C;
     bool on_water_surface = false;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(corners_buff)),
@@ -2502,7 +2502,7 @@ void N_RenderPathFlowField(void *nav_private, const struct map *map,
 
     size_t count = FIELD_RES_R * FIELD_RES_C;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawFlowField,
+        .func = R_Cmd_DrawFlowField,
         .nargs = 5,
         .args = {
             R_PushArg(positions_buff, sizeof(positions_buff)),
@@ -2562,7 +2562,7 @@ void N_RenderLOSField(void *nav_private, const struct map *map, mat4x4_t *chunk_
     size_t count = FIELD_RES_R * FIELD_RES_C;
     bool on_water_surface = false;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(corners_buff)),
@@ -2637,7 +2637,7 @@ void N_RenderEnemySeekField(void *nav_private, const struct map *map, mat4x4_t *
 
     size_t count = FIELD_RES_R * FIELD_RES_C;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawFlowField,
+        .func = R_Cmd_DrawFlowField,
         .nargs = 5,
         .args = {
             R_PushArg(positions_buff, sizeof(positions_buff)),
@@ -2649,7 +2649,7 @@ void N_RenderEnemySeekField(void *nav_private, const struct map *map, mat4x4_t *
     });
     bool on_water_surface = false;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(corners_buff)),
@@ -2704,7 +2704,7 @@ void N_RenderSurroundField(void *nav_private, const struct map *map, mat4x4_t *c
 
     size_t count = FIELD_RES_R * FIELD_RES_C;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawFlowField,
+        .func = R_Cmd_DrawFlowField,
         .nargs = 5,
         .args = {
             R_PushArg(positions_buff, sizeof(positions_buff)),
@@ -2761,7 +2761,7 @@ void N_RenderNavigationBlockers(void *nav_private, const struct map *map,
     size_t count = FIELD_RES_R * FIELD_RES_C;
     bool on_water_surface = false;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(corners_buff)),
@@ -2867,7 +2867,7 @@ void N_RenderBuildableTiles(void *nav_private, const struct map *map,
 
     bool on_water_surface = true;
     R_PushCmd((struct rcmd){
-        .func = R_GL_DrawMapOverlayQuads,
+        .func = R_Cmd_DrawMapOverlayQuads,
         .nargs = 6,
         .args = {
             R_PushArg(corners_buff, sizeof(corners_buff)),

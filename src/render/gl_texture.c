@@ -843,7 +843,7 @@ void R_GL_Texture_GetSize(GLuint texid, int *out_w, int *out_h, int *out_d)
     GL_ASSERT_OK();
 }
 
-void R_GL_Texture_GetOrLoad(const char *basedir, const char *name, GLuint *out)
+void R_GL_Texture_GetOrLoad_Impl(const char *basedir, const char *name, GLuint *out)
 {
     ASSERT_IN_RENDER_THREAD();
 

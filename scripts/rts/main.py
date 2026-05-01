@@ -36,6 +36,7 @@ import os
 import sys
 import pf
 import rts.globals
+import rts.time_of_day as time_of_day
 
 import views.demo_window as dw
 import views.action_pad_window as apw
@@ -142,9 +143,7 @@ def toggle_pause(user, event):
             pf.set_simstate(pf.G_RUNNING)
 
 def configure_demo_environment():
-    pf.set_ambient_light_color((1.0, 1.0, 1.0))
-    pf.set_emit_light_color((1.0, 1.0, 1.0))
-    pf.set_emit_light_pos((1664.0, 1024.0, 384.0))
+    time_of_day.configure_from_env()
     pf.set_active_font("OptimusPrinceps.ttf")
 
 def load_demo_scene():

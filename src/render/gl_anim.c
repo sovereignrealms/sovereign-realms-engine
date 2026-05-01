@@ -149,7 +149,7 @@ void R_GL_AnimShutdown(void)
     s_pose_buff_size = DEFAULT_POSE_BUFF_SIZE;
 }
 
-void R_GL_AnimAppendData(GLfloat *data, size_t *size)
+void R_GL_AnimAppendData_Impl(GLfloat *data, size_t *size)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -179,7 +179,7 @@ void R_GL_AnimBindPoseBuff(void)
     GL_ASSERT_OK();
 }
 
-void R_GL_AnimSetUniforms(mat4x4_t *normal_mat, struct anim_pose_data_desc *desc, const uint32_t *uid)
+void R_GL_AnimSetUniforms_Impl(mat4x4_t *normal_mat, struct anim_pose_data_desc *desc, const uint32_t *uid)
 {
     ASSERT_IN_RENDER_THREAD();
     (void)uid;

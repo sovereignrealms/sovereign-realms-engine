@@ -80,6 +80,15 @@ struct pyrequest{
     }type;
 };
 
+#if PY_MAJOR_VERSION >= 3
+enum py3_wait_kind{
+    PY3_WAIT_NONE,
+    PY3_WAIT_FRAME,
+    PY3_WAIT_EVENT,
+    PY3_WAIT_SLEEP,
+};
+#endif
+
 typedef struct {
     PyObject_HEAD
     PyObject *runfunc;
@@ -99,6 +108,13 @@ typedef struct {
     const char *regname;
     uint32_t sleep_elapsed;
     bool small_stack;
+#if PY_MAJOR_VERSION >= 3
+    PyObject *gen;
+    enum py3_wait_kind py3_wait_kind;
+    int py3_wait_event;
+    uint32_t py3_sleep_elapsed;
+    uint32_t py3_sleep_duration;
+#endif
 }PyTaskObject;
 
 KHASH_MAP_INIT_INT(task, PyTaskObject*)
@@ -240,6 +256,9 @@ PyTypeObject PyTask_type = {
 static PyThreadState *s_main_thread_state;
 static khash_t(task) *s_tid_task_map;
 static uint32_t       s_pause_tick;
+#if PY_MAJOR_VERSION >= 3
+static uint32_t       s_next_py3_tid = 1;
+#endif
 
 /*****************************************************************************/
 /* STATIC FUNCTIONS                                                          */
@@ -265,9 +284,216 @@ static void pytask_ts_delete(PyThreadState *tstate)
 static PyObject *pytask_unsupported_error(void)
 {
     PyErr_SetString(PyExc_NotImplementedError,
-        "pf.Task is not yet supported on Python 3 in the current macOS native port.");
+        "This legacy blocking pf.Task operation is not supported on Python 3. "
+        "Use generator-style tasks with yield self.yield_(), yield self.sleep(ms), "
+        "and yield self.await_event(event).");
     return NULL;
 }
+
+#if PY_MAJOR_VERSION >= 3
+static PyObject *pytask_py3_token(const char *kind)
+{
+    return Py_BuildValue("(s)", kind);
+}
+
+static PyObject *pytask_py3_token_int(const char *kind, int value)
+{
+    return Py_BuildValue("(si)", kind, value);
+}
+
+static void pytask_py3_complete_running(PyTaskObject *self, PyObject *result)
+{
+    khiter_t k = kh_get(task, s_tid_task_map, self->tid);
+    if(k != kh_end(s_tid_task_map))
+        kh_del(task, s_tid_task_map, k);
+
+    PyObject *rval = Py_BuildValue("(OO)", (PyObject*)self, result ? result : Py_None);
+    E_Global_Notify(EVENT_SCRIPT_TASK_FINISHED, rval, ES_SCRIPT);
+
+    self->state = PYTASK_STATE_FINISHED;
+    self->py3_wait_kind = PY3_WAIT_NONE;
+    Py_CLEAR(self->runfunc);
+    Py_CLEAR(self->gen);
+
+    Py_DECREF(self);
+}
+
+static void pytask_py3_fail(PyTaskObject *self)
+{
+    PyObject *exc_type = NULL;
+    PyObject *exc_value = NULL;
+    PyObject *exc_traceback = NULL;
+    PyErr_Fetch(&exc_type, &exc_value, &exc_traceback);
+    PyErr_NormalizeException(&exc_type, &exc_value, &exc_traceback);
+
+    PyObject *exc_info = Py_BuildValue("OOOO",
+        (PyObject*)self,
+        exc_type      ? exc_type      : Py_None,
+        exc_value     ? exc_value     : Py_None,
+        exc_traceback ? exc_traceback : Py_None
+    );
+    E_Global_Notify(EVENT_SCRIPT_TASK_EXCEPTION, exc_info, ES_SCRIPT);
+
+    PyErr_Restore(exc_type, exc_value, exc_traceback);
+    S_ShowLastError();
+    PyErr_Clear();
+
+    pytask_py3_complete_running(self, Py_None);
+}
+
+static void pytask_py3_event_handler(void *user, void *event_arg);
+
+static bool pytask_py3_set_wait(PyTaskObject *self, PyObject *yielded)
+{
+    if(yielded == Py_None) {
+        self->py3_wait_kind = PY3_WAIT_FRAME;
+        return true;
+    }
+
+    if(!PyTuple_Check(yielded) || PyTuple_GET_SIZE(yielded) < 1
+    || !PyString_Check(PyTuple_GET_ITEM(yielded, 0))) {
+        PyErr_SetString(PyExc_TypeError,
+            "pf.Task.__run__ must yield self.yield_(), self.sleep(ms), "
+            "self.await_event(event), or None.");
+        return false;
+    }
+
+    const char *kind = PyString_AS_STRING(PyTuple_GET_ITEM(yielded, 0));
+    if(!strcmp(kind, "yield")) {
+        self->py3_wait_kind = PY3_WAIT_FRAME;
+        return true;
+    }
+
+    if(!strcmp(kind, "sleep")) {
+        if(PyTuple_GET_SIZE(yielded) != 2 || !PyInt_Check(PyTuple_GET_ITEM(yielded, 1))) {
+            PyErr_SetString(PyExc_TypeError, "pf.Task.sleep token must carry a millisecond integer.");
+            return false;
+        }
+        self->py3_wait_kind = PY3_WAIT_SLEEP;
+        self->py3_sleep_elapsed = 0;
+        self->py3_sleep_duration = (uint32_t)PyInt_AS_LONG(PyTuple_GET_ITEM(yielded, 1));
+        return true;
+    }
+
+    if(!strcmp(kind, "event")) {
+        if(PyTuple_GET_SIZE(yielded) != 2 || !PyInt_Check(PyTuple_GET_ITEM(yielded, 1))) {
+            PyErr_SetString(PyExc_TypeError, "pf.Task.await_event token must carry an event integer.");
+            return false;
+        }
+        self->py3_wait_kind = PY3_WAIT_EVENT;
+        self->py3_wait_event = (int)PyInt_AS_LONG(PyTuple_GET_ITEM(yielded, 1));
+        E_Global_Register((uint32_t)self->py3_wait_event, pytask_py3_event_handler,
+                          (void*)(uintptr_t)self->py3_wait_event, G_RUNNING | G_PAUSED_UI_RUNNING);
+        return true;
+    }
+
+    PyErr_Format(PyExc_TypeError, "Unknown pf.Task yield token '%s'.", kind);
+    return false;
+}
+
+static void pytask_py3_step(PyTaskObject *self, PyObject *send_value)
+{
+    if(self->state != PYTASK_STATE_RUNNING || !self->gen)
+        return;
+
+    self->py3_wait_kind = PY3_WAIT_NONE;
+    PyObject *yielded = send_value
+        ? PyObject_CallMethod(self->gen, "send", "O", send_value)
+        : PyObject_CallMethod(self->gen, "__next__", NULL);
+
+    if(!yielded) {
+        if(PyErr_ExceptionMatches(PyExc_StopIteration)) {
+            PyObject *exc_type = NULL;
+            PyObject *exc_value = NULL;
+            PyObject *exc_traceback = NULL;
+            PyObject *result = NULL;
+
+            PyErr_Fetch(&exc_type, &exc_value, &exc_traceback);
+            PyErr_NormalizeException(&exc_type, &exc_value, &exc_traceback);
+            if(exc_value) {
+                result = PyObject_GetAttrString(exc_value, "value");
+                if(!result)
+                    PyErr_Clear();
+            }
+            if(!result) {
+                Py_INCREF(Py_None);
+                result = Py_None;
+            }
+
+            Py_XDECREF(exc_type);
+            Py_XDECREF(exc_value);
+            Py_XDECREF(exc_traceback);
+            pytask_py3_complete_running(self, result);
+            Py_DECREF(result);
+        }else{
+            pytask_py3_fail(self);
+        }
+        return;
+    }
+
+    if(!pytask_py3_set_wait(self, yielded)) {
+        Py_DECREF(yielded);
+        pytask_py3_fail(self);
+        return;
+    }
+    Py_DECREF(yielded);
+}
+
+static void pytask_py3_resume(uint32_t event, PyObject *event_value, bool match_event)
+{
+    size_t count = kh_size(s_tid_task_map);
+    PyTaskObject **ready = malloc(count * sizeof(*ready));
+    if(!ready)
+        return;
+
+    size_t nready = 0;
+    PyTaskObject *curr;
+    uint32_t key;
+    (void)key;
+
+    kh_foreach(s_tid_task_map, key, curr, {
+        bool resume = false;
+        if(match_event) {
+            resume = curr->py3_wait_kind == PY3_WAIT_EVENT
+                && curr->py3_wait_event == (int)event;
+        }else{
+            resume = curr->py3_wait_kind == PY3_WAIT_FRAME
+                || curr->py3_wait_kind == PY3_WAIT_SLEEP;
+        }
+
+        if(resume) {
+            Py_INCREF(curr);
+            ready[nready++] = curr;
+        }
+    });
+
+    for(size_t i = 0; i < nready; i++) {
+        PyTaskObject *task = ready[i];
+        if(!match_event && task->py3_wait_kind == PY3_WAIT_SLEEP
+        && task->py3_sleep_elapsed < task->py3_sleep_duration) {
+            Py_DECREF(task);
+            continue;
+        }
+        pytask_py3_step(task, match_event ? event_value : Py_None);
+        Py_DECREF(task);
+    }
+
+    free(ready);
+}
+
+static void pytask_py3_event_handler(void *user, void *event_arg)
+{
+    int event = (int)(uintptr_t)user;
+    PyObject *wrapped = S_WrapEngineEventArg(event, event_arg);
+    if(!wrapped) {
+        PyErr_Clear();
+        Py_INCREF(Py_None);
+        wrapped = Py_None;
+    }
+    pytask_py3_resume((uint32_t)event, wrapped, true);
+    Py_DECREF(wrapped);
+}
+#endif
 
 static PyObject *pytask_call_method(void *func, PyTaskObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -618,6 +844,13 @@ static PyObject *PyTask_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     self->stack_depth = 0;
     self->regname = NULL;
     self->sleep_elapsed = 0;
+#if PY_MAJOR_VERSION >= 3
+    self->gen = NULL;
+    self->py3_wait_kind = PY3_WAIT_NONE;
+    self->py3_wait_event = 0;
+    self->py3_sleep_elapsed = 0;
+    self->py3_sleep_duration = 0;
+#endif
     return (PyObject*)self;
 
 fail_run:
@@ -633,6 +866,9 @@ static void PyTask_dealloc(PyTaskObject *self)
     assert(PyThreadState_Get() != self->ts);
 
     Py_CLEAR(self->runfunc);
+#if PY_MAJOR_VERSION >= 3
+    Py_CLEAR(self->gen);
+#endif
 #if PY_MAJOR_VERSION < 3
     if(self->ts) {
         Py_CLEAR(self->ts->curexc_type);
@@ -942,9 +1178,45 @@ fail_args:
 static PyObject *PyTask_run(PyTaskObject *self)
 {
 #if PY_MAJOR_VERSION >= 3
-    (void)self;
-    return pytask_unsupported_error();
-#endif
+    if(self->state != PYTASK_STATE_NOT_STARTED) {
+        PyErr_SetString(PyExc_RuntimeError, "Cannot run a pf.Task more than once.");
+        return NULL;
+    }
+
+    PyObject *args = PyTuple_Pack(1, self);
+    if(!args)
+        return NULL;
+
+    PyObject *ret = PyObject_CallObject(self->runfunc, args);
+    Py_DECREF(args);
+    if(!ret)
+        return NULL;
+
+    if(!PyIter_Check(ret)) {
+        PyObject *rval = Py_BuildValue("(OO)", (PyObject*)self, ret);
+        E_Global_Notify(EVENT_SCRIPT_TASK_FINISHED, rval, ES_SCRIPT);
+        Py_DECREF(ret);
+        self->state = PYTASK_STATE_FINISHED;
+        Py_CLEAR(self->runfunc);
+        Py_RETURN_NONE;
+    }
+
+    self->gen = ret; /* steal reference */
+    self->state = PYTASK_STATE_RUNNING;
+    self->tid = s_next_py3_tid++;
+    if(self->tid == NULL_TID)
+        self->tid = s_next_py3_tid++;
+
+    Py_INCREF(self);
+
+    int status;
+    khiter_t k = kh_put(task, s_tid_task_map, self->tid, &status);
+    assert(status != -1 && status != 0);
+    kh_value(s_tid_task_map, k) = self;
+
+    pytask_py3_step(self, NULL);
+    Py_RETURN_NONE;
+#else
     ASSERT_IN_MAIN_THREAD();
 
     int flags = TASK_MAIN_THREAD_PINNED;
@@ -967,6 +1239,7 @@ static PyObject *PyTask_run(PyTaskObject *self)
     kh_value(s_tid_task_map, k) = self;
 
     Py_RETURN_NONE;
+#endif
 }
 
 static PyObject *PyTask_wait(PyTaskObject *self, PyObject *args)
@@ -1022,8 +1295,8 @@ static PyObject *PyTask_yield(PyTaskObject *self)
 {
 #if PY_MAJOR_VERSION >= 3
     (void)self;
-    return pytask_unsupported_error();
-#endif
+    return pytask_py3_token("yield");
+#else
     ASSERT_IN_MAIN_THREAD();
 
     if(self->state != PYTASK_STATE_RUNNING || Sched_ActiveTID() != self->tid) {
@@ -1041,6 +1314,7 @@ static PyObject *PyTask_yield(PyTaskObject *self)
     pytask_req_clear(self);
 
     Py_RETURN_NONE;
+#endif
 }
 
 static PyObject *PyTask_send(PyTaskObject *self, PyObject *args)
@@ -1173,9 +1447,13 @@ static PyObject *PyTask_await_event(PyTaskObject *self, PyObject *args)
 {
 #if PY_MAJOR_VERSION >= 3
     (void)self;
-    (void)args;
-    return pytask_unsupported_error();
-#endif
+    int event;
+    if(!PyArg_ParseTuple(args, "i", &event)) {
+        PyErr_SetString(PyExc_TypeError, "Expecting one integer argument (event to wait on)");
+        return NULL;
+    }
+    return pytask_py3_token_int("event", event);
+#else
     ASSERT_IN_MAIN_THREAD();
 
     if(self->state != PYTASK_STATE_RUNNING || Sched_ActiveTID() != self->tid) {
@@ -1204,15 +1482,22 @@ static PyObject *PyTask_await_event(PyTaskObject *self, PyObject *args)
     }else{
         return (PyObject*)arg; /* steal ref */
     }
+#endif
 }
 
 static PyObject *PyTask_sleep(PyTaskObject *self, PyObject *args)
 {
 #if PY_MAJOR_VERSION >= 3
     (void)self;
-    (void)args;
-    return pytask_unsupported_error();
-#endif
+    int ms;
+    if(!PyArg_ParseTuple(args, "i", &ms)) {
+        PyErr_SetString(PyExc_TypeError, "Expecting one integer argument (number of milliseconds)");
+        return NULL;
+    }
+    if(ms < 0)
+        ms = 0;
+    return pytask_py3_token_int("sleep", ms);
+#else
     ASSERT_IN_MAIN_THREAD();
 
     if(self->state != PYTASK_STATE_RUNNING || Sched_ActiveTID() != self->tid) {
@@ -1237,15 +1522,21 @@ static PyObject *PyTask_sleep(PyTaskObject *self, PyObject *args)
     pytask_req_clear(self);
 
     Py_RETURN_NONE;
+#endif
 }
 
 static PyObject *PyTask_register(PyTaskObject *self, PyObject *args)
 {
 #if PY_MAJOR_VERSION >= 3
-    (void)self;
-    (void)args;
-    return pytask_unsupported_error();
-#endif
+    const char *name;
+    if(!PyArg_ParseTuple(args, "s", &name)) {
+        PyErr_SetString(PyExc_TypeError, "Expecting one string argument (the name to register under)");
+        return NULL;
+    }
+    PF_FREE(self->regname);
+    self->regname = pf_strdup(name);
+    Py_RETURN_NONE;
+#else
     ASSERT_IN_MAIN_THREAD();
 
     if(self->state != PYTASK_STATE_RUNNING || Sched_ActiveTID() != self->tid) {
@@ -1271,16 +1562,35 @@ static PyObject *PyTask_register(PyTaskObject *self, PyObject *args)
     pytask_req_clear(self);
 
     Py_RETURN_NONE;
+#endif
 }
 
 static PyObject *PyTask_who_is(PyTaskObject *self, PyObject *args, PyObject *kwargs)
 {
 #if PY_MAJOR_VERSION >= 3
     (void)self;
-    (void)args;
-    (void)kwargs;
-    return pytask_unsupported_error();
-#endif
+    static char *kwlist[] = {"name", "blocking", NULL};
+    int blocking = false;
+    const char *name;
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "s|i", kwlist, &name, &blocking)) {
+        assert(PyErr_Occurred());
+        return NULL;
+    }
+    (void)blocking;
+
+    uint32_t key;
+    PyTaskObject *curr;
+    (void)key;
+    kh_foreach(s_tid_task_map, key, curr, {
+        if(curr->regname && !strcmp(curr->regname, name)) {
+            Py_INCREF(curr);
+            return (PyObject*)curr;
+        }
+    });
+
+    Py_RETURN_NONE;
+#else
     ASSERT_IN_MAIN_THREAD();
 
     if(self->state != PYTASK_STATE_RUNNING || Sched_ActiveTID() != self->tid) {
@@ -1318,6 +1628,7 @@ static PyObject *PyTask_who_is(PyTaskObject *self, PyObject *args, PyObject *kwa
     PyTaskObject *ret = kh_value(s_tid_task_map, k);
     Py_INCREF(ret);
     return (PyObject*)ret;
+#endif
 }
 
 static PyObject *PyTask_get_completed(PyTaskObject *self, void *closure)
@@ -1337,9 +1648,18 @@ static void on_update_start(void *user, void *event)
     (void)key;
 
     kh_foreach(s_tid_task_map, key, curr, {
+#if PY_MAJOR_VERSION >= 3
+        if(curr->py3_wait_kind == PY3_WAIT_SLEEP)
+            curr->py3_sleep_elapsed += elapsed;
+#else
         if(curr->req.type == PYREQ_SLEEP)
             curr->sleep_elapsed += elapsed;
+#endif
     });
+
+#if PY_MAJOR_VERSION >= 3
+    pytask_py3_resume(EVENT_UPDATE_START, Py_None, false);
+#endif
 }
 
 /*****************************************************************************/
@@ -1374,6 +1694,12 @@ void S_Task_Clear(void)
 {
     PyTaskObject *curr;
     kh_foreach(s_tid_task_map, (uint32_t){0}, curr, {
+#if PY_MAJOR_VERSION >= 3
+        curr->state = PYTASK_STATE_FINISHED;
+        curr->py3_wait_kind = PY3_WAIT_NONE;
+        Py_CLEAR(curr->runfunc);
+        Py_CLEAR(curr->gen);
+#endif
         Py_DECREF(curr);
     });
     kh_clear(task, s_tid_task_map);
@@ -1401,6 +1727,9 @@ PyObject *S_Task_GetAll(void)
 
 void S_Task_MaybeExit(void)
 {
+#if PY_MAJOR_VERSION >= 3
+    return;
+#else
     if(!s_tid_task_map)
         return;
     uint32_t tid = Sched_ActiveTID();
@@ -1410,10 +1739,14 @@ void S_Task_MaybeExit(void)
     PyTaskObject *self = kh_value(s_tid_task_map, k);
     pytask_req_set(self, NULL, NULL, PYREQ_YIELD);
     pytask_pop_ctx(self);
+#endif
 }
 
 void S_Task_MaybeEnter(void)
 {
+#if PY_MAJOR_VERSION >= 3
+    return;
+#else
     if(!s_tid_task_map)
         return;
     uint32_t tid = Sched_ActiveTID();
@@ -1423,10 +1756,14 @@ void S_Task_MaybeEnter(void)
     PyTaskObject *self = kh_value(s_tid_task_map, k);
     pytask_push_ctx(self);
     pytask_req_clear(self);
+#endif
 }
 
 void S_Task_Flush(void)
 {
+#if PY_MAJOR_VERSION >= 3
+    return;
+#else
     uint32_t tid;
     PyTaskObject *curr;
     int nran = 0;
@@ -1441,4 +1778,5 @@ void S_Task_Flush(void)
         });
     
     }while(nran > 0);
+#endif
 }

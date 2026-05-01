@@ -15,6 +15,9 @@
 !/assets/loading_screens
 !/assets/icons
 !/assets/skyboxes
+!/assets/sprites
+!/assets/music
+!/assets/sounds
 
 *.pyc
 *.pickle

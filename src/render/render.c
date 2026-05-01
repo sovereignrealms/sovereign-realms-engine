@@ -14,6 +14,7 @@
  */
 
 #include "public/render_ctrl.h"
+#include "public/render.h"
 #include "backend_local.h"
 #include "../settings.h"
 #include "../main.h"
@@ -27,11 +28,601 @@
 
 #define EPSILON     (1.0f / 1024)
 
+struct render_private;
+struct vertex;
+
 /*****************************************************************************/
 /* GLOBAL VARIABLES                                                          */
 /*****************************************************************************/
 
 bool g_trace_gpu;
+
+void R_Cmd_Init(struct render_private *priv, const char *shader,
+               const struct vertex *vbuff)
+{
+    (void)priv;
+    (void)shader;
+    (void)vbuff;
+    assert(!"R_Cmd_Init is a render command identity");
+}
+
+void R_Cmd_Draw(const void *render_private, mat4x4_t *model,
+               const bool *translucent)
+{
+    (void)render_private;
+    (void)model;
+    (void)translucent;
+    assert(!"R_Cmd_Draw is a render command identity");
+}
+
+void R_Cmd_BeginFrame(void)
+{
+    assert(!"R_Cmd_BeginFrame is a render command identity");
+}
+
+void R_Cmd_EndFrame(void)
+{
+    assert(!"R_Cmd_EndFrame is a render command identity");
+}
+
+void R_Cmd_SetViewMatAndPos(const mat4x4_t *view, const vec3_t *pos)
+{
+    (void)view;
+    (void)pos;
+    assert(!"R_Cmd_SetViewMatAndPos is a render command identity");
+}
+
+void R_Cmd_SetProj(const mat4x4_t *proj)
+{
+    (void)proj;
+    assert(!"R_Cmd_SetProj is a render command identity");
+}
+
+void R_Cmd_SetAmbientLightColor(const vec3_t *color)
+{
+    (void)color;
+    assert(!"R_Cmd_SetAmbientLightColor is a render command identity");
+}
+
+void R_Cmd_SetLightEmitColor(const vec3_t *color)
+{
+    (void)color;
+    assert(!"R_Cmd_SetLightEmitColor is a render command identity");
+}
+
+void R_Cmd_SetLightPos(const vec3_t *pos)
+{
+    (void)pos;
+    assert(!"R_Cmd_SetLightPos is a render command identity");
+}
+
+void R_Cmd_SetScreenspaceDrawMode(void)
+{
+    assert(!"R_Cmd_SetScreenspaceDrawMode is a render command identity");
+}
+
+void R_Cmd_DrawBox2D(const vec2_t *screen_pos, const vec2_t *signed_size,
+                    const vec3_t *color, const float *width)
+{
+    (void)screen_pos;
+    (void)signed_size;
+    (void)color;
+    (void)width;
+    assert(!"R_Cmd_DrawBox2D is a render command identity");
+}
+
+void R_Cmd_DrawLine(vec2_t endpoints[], const float *width, const vec3_t *color,
+                   const struct map *map)
+{
+    (void)endpoints;
+    (void)width;
+    (void)color;
+    (void)map;
+    assert(!"R_Cmd_DrawLine is a render command identity");
+}
+
+void R_Cmd_DrawQuad(vec2_t corners[], const float *width, const vec3_t *color,
+                   const struct map *map)
+{
+    (void)corners;
+    (void)width;
+    (void)color;
+    (void)map;
+    assert(!"R_Cmd_DrawQuad is a render command identity");
+}
+
+void R_Cmd_DrawOrigin(const void *render_private, mat4x4_t *model)
+{
+    (void)render_private;
+    (void)model;
+    assert(!"R_Cmd_DrawOrigin is a render command identity");
+}
+
+void R_Cmd_DrawRay(const vec3_t *origin, const vec3_t *dir, mat4x4_t *model,
+                  const vec3_t *color, const float *t)
+{
+    (void)origin;
+    (void)dir;
+    (void)model;
+    (void)color;
+    (void)t;
+    assert(!"R_Cmd_DrawRay is a render command identity");
+}
+
+void R_Cmd_DrawOBB(const struct aabb *aabb, const mat4x4_t *model)
+{
+    (void)aabb;
+    (void)model;
+    assert(!"R_Cmd_DrawOBB is a render command identity");
+}
+
+void R_Cmd_DrawSelectionCircle(const vec2_t *xz, const float *radius,
+                              const float *width, const vec3_t *color,
+                              const struct map *map)
+{
+    (void)xz;
+    (void)radius;
+    (void)width;
+    (void)color;
+    (void)map;
+    assert(!"R_Cmd_DrawSelectionCircle is a render command identity");
+}
+
+void R_Cmd_DrawSelectionRectangle(const struct obb *box, const float *width,
+                                 const vec3_t *color, const struct map *map)
+{
+    (void)box;
+    (void)width;
+    (void)color;
+    (void)map;
+    assert(!"R_Cmd_DrawSelectionRectangle is a render command identity");
+}
+
+void R_Cmd_DrawMapOverlayQuads(vec2_t *xz_corners, vec3_t *colors,
+                              const size_t *count, mat4x4_t *model,
+                              bool *on_water_surface, const struct map *map)
+{
+    (void)xz_corners;
+    (void)colors;
+    (void)count;
+    (void)model;
+    (void)on_water_surface;
+    (void)map;
+    assert(!"R_Cmd_DrawMapOverlayQuads is a render command identity");
+}
+
+void R_Cmd_DrawFlowField(vec2_t *xz_positions, vec2_t *xz_directions,
+                        const size_t *count, mat4x4_t *model,
+                        const struct map *map)
+{
+    (void)xz_positions;
+    (void)xz_directions;
+    (void)count;
+    (void)model;
+    (void)map;
+    assert(!"R_Cmd_DrawFlowField is a render command identity");
+}
+
+void R_Cmd_DrawCombinedHRVO(vec2_t *apexes, vec2_t *left_rays,
+                           vec2_t *right_rays, const size_t *num_vos,
+                           const struct map *map)
+{
+    (void)apexes;
+    (void)left_rays;
+    (void)right_rays;
+    (void)num_vos;
+    (void)map;
+    assert(!"R_Cmd_DrawCombinedHRVO is a render command identity");
+}
+
+void R_Cmd_DrawLoadingScreen(const char *path)
+{
+    (void)path;
+    assert(!"R_Cmd_DrawLoadingScreen is a render command identity");
+}
+
+void R_Cmd_DrawHealthbars(const size_t *num_ents, GLfloat *ent_health_pc,
+                         vec3_t *ent_top_pos_ws, int *yoffsets,
+                         const struct camera *cam)
+{
+    (void)num_ents;
+    (void)ent_health_pc;
+    (void)ent_top_pos_ws;
+    (void)yoffsets;
+    (void)cam;
+    assert(!"R_Cmd_DrawHealthbars is a render command identity");
+}
+
+void R_Cmd_DrawSkeleton(mat4x4_t *model, const struct skeleton *skel,
+                       const struct camera *cam)
+{
+    (void)model;
+    (void)skel;
+    (void)cam;
+    assert(!"R_Cmd_DrawSkeleton is a render command identity");
+}
+
+void R_Cmd_DrawModelToTexture(const void *render_private, const struct obb *obb,
+                             struct ent_anim_rstate *anim_state,
+                             const char *key)
+{
+    (void)render_private;
+    (void)obb;
+    (void)anim_state;
+    (void)key;
+    assert(!"R_Cmd_DrawModelToTexture is a render command identity");
+}
+
+void R_Cmd_DrawNormals(const void *render_private, mat4x4_t *model,
+                      const bool *anim)
+{
+    (void)render_private;
+    (void)model;
+    (void)anim;
+    assert(!"R_Cmd_DrawNormals is a render command identity");
+}
+
+void R_Cmd_DepthPassBegin(const vec3_t *light_pos, const vec3_t *cam_pos,
+                         const vec3_t *cam_dir)
+{
+    (void)light_pos;
+    (void)cam_pos;
+    (void)cam_dir;
+    assert(!"R_Cmd_DepthPassBegin is a render command identity");
+}
+
+void R_Cmd_DepthPassEnd(void)
+{
+    assert(!"R_Cmd_DepthPassEnd is a render command identity");
+}
+
+void R_Cmd_RenderDepthMap(const void *render_private, mat4x4_t *model)
+{
+    (void)render_private;
+    (void)model;
+    assert(!"R_Cmd_RenderDepthMap is a render command identity");
+}
+
+void R_Cmd_SetShadowsEnabled(const bool *on)
+{
+    (void)on;
+    assert(!"R_Cmd_SetShadowsEnabled is a render command identity");
+}
+
+void R_Cmd_Batch_RenderDepthMap(struct render_input *in)
+{
+    (void)in;
+    assert(!"R_Cmd_Batch_RenderDepthMap is a render command identity");
+}
+
+void R_Cmd_Batch_Draw(struct render_input *in)
+{
+    (void)in;
+    assert(!"R_Cmd_Batch_Draw is a render command identity");
+}
+
+void R_Cmd_Batch_DrawWithID(struct render_input *in, enum batch_id *id)
+{
+    (void)in;
+    (void)id;
+    assert(!"R_Cmd_Batch_DrawWithID is a render command identity");
+}
+
+void R_Cmd_Batch_Reset(void)
+{
+    assert(!"R_Cmd_Batch_Reset is a render command identity");
+}
+
+void R_Cmd_Batch_AllocChunks(struct map_resolution *res)
+{
+    (void)res;
+    assert(!"R_Cmd_Batch_AllocChunks is a render command identity");
+}
+
+void R_Cmd_AnimAppendData(GLfloat *data, size_t *size)
+{
+    (void)data;
+    (void)size;
+    assert(!"R_Cmd_AnimAppendData is a render command identity");
+}
+
+void R_Cmd_AnimSetUniforms(mat4x4_t *normal_mat,
+                          struct anim_pose_data_desc *desc,
+                          const uint32_t *uid)
+{
+    (void)normal_mat;
+    (void)desc;
+    (void)uid;
+    assert(!"R_Cmd_AnimSetUniforms is a render command identity");
+}
+
+void R_Cmd_SpriteRenderBatch(struct sprite_desc *sprites, size_t *nsprites,
+                            const struct camera *cam)
+{
+    (void)sprites;
+    (void)nsprites;
+    (void)cam;
+    assert(!"R_Cmd_SpriteRenderBatch is a render command identity");
+}
+
+void R_Cmd_MapInit(const char map_texfiles[][256], const size_t *num_textures,
+                  const struct map_resolution *res)
+{
+    (void)map_texfiles;
+    (void)num_textures;
+    (void)res;
+    assert(!"R_Cmd_MapInit is a render command identity");
+}
+
+void R_Cmd_MapShutdown(void)
+{
+    assert(!"R_Cmd_MapShutdown is a render command identity");
+}
+
+void R_Cmd_MapBegin(const bool *shadows, const vec2_t *pos,
+                   size_t *num_splats, const struct splatmap *splatmap,
+                   const struct map_resolution *res, const struct map *map)
+{
+    (void)shadows;
+    (void)pos;
+    (void)num_splats;
+    (void)splatmap;
+    (void)res;
+    (void)map;
+    assert(!"R_Cmd_MapBegin is a render command identity");
+}
+
+void R_Cmd_MapEnd(void)
+{
+    assert(!"R_Cmd_MapEnd is a render command identity");
+}
+
+void R_Cmd_MapUpdateFog(void *buff, const size_t *size)
+{
+    (void)buff;
+    (void)size;
+    assert(!"R_Cmd_MapUpdateFog is a render command identity");
+}
+
+void R_Cmd_MapInvalidate(void)
+{
+    assert(!"R_Cmd_MapInvalidate is a render command identity");
+}
+
+void R_Cmd_Texture_GetOrLoad(const char *basedir, const char *name, GLuint *out)
+{
+    (void)basedir;
+    (void)name;
+    (void)out;
+    assert(!"R_Cmd_Texture_GetOrLoad is a render command identity");
+}
+
+void R_Cmd_PositionsUploadData(vec3_t *posbuff, uint32_t *idbuff,
+                              const size_t *nents, const struct map *map)
+{
+    (void)posbuff;
+    (void)idbuff;
+    (void)nents;
+    (void)map;
+    assert(!"R_Cmd_PositionsUploadData is a render command identity");
+}
+
+void R_Cmd_PositionsInvalidateData(void)
+{
+    assert(!"R_Cmd_PositionsInvalidateData is a render command identity");
+}
+
+void R_Cmd_MoveUpdateUniforms(const struct map_resolution *res, vec2_t *map_pos,
+                             int *ticks_hz, int *nwork)
+{
+    (void)res;
+    (void)map_pos;
+    (void)ticks_hz;
+    (void)nwork;
+    assert(!"R_Cmd_MoveUpdateUniforms is a render command identity");
+}
+
+void R_Cmd_MoveUploadData(void *gpuid_buff, size_t *ndynamic_ents,
+                         void *attr_buff, size_t *attr_buffsize,
+                         void *flock_buff, size_t *flock_buffsize,
+                         void *cost_base_buff, size_t *cost_base_size,
+                         void *blockers_buff, size_t *blockers_size)
+{
+    (void)gpuid_buff;
+    (void)ndynamic_ents;
+    (void)attr_buff;
+    (void)attr_buffsize;
+    (void)flock_buff;
+    (void)flock_buffsize;
+    (void)cost_base_buff;
+    (void)cost_base_size;
+    (void)blockers_buff;
+    (void)blockers_size;
+    assert(!"R_Cmd_MoveUploadData is a render command identity");
+}
+
+void R_Cmd_MoveInvalidateData(void)
+{
+    assert(!"R_Cmd_MoveInvalidateData is a render command identity");
+}
+
+void R_Cmd_MoveDispatchWork(const size_t *nents)
+{
+    (void)nents;
+    assert(!"R_Cmd_MoveDispatchWork is a render command identity");
+}
+
+void R_Cmd_MoveReadNewVelocities(void *out, const size_t *nwork,
+                                const size_t *maxout)
+{
+    (void)out;
+    (void)nwork;
+    (void)maxout;
+    assert(!"R_Cmd_MoveReadNewVelocities is a render command identity");
+}
+
+void R_Cmd_MovePollCompletion(SDL_atomic_t *out)
+{
+    (void)out;
+    assert(!"R_Cmd_MovePollCompletion is a render command identity");
+}
+
+void R_Cmd_MoveClearState(void)
+{
+    assert(!"R_Cmd_MoveClearState is a render command identity");
+}
+
+void R_Cmd_WaterInit(void)
+{
+    assert(!"R_Cmd_WaterInit is a render command identity");
+}
+
+void R_Cmd_WaterShutdown(void)
+{
+    assert(!"R_Cmd_WaterShutdown is a render command identity");
+}
+
+void R_Cmd_DrawWater(const struct render_input *in, const bool *refraction,
+                    const bool *reflection)
+{
+    (void)in;
+    (void)refraction;
+    (void)reflection;
+    assert(!"R_Cmd_DrawWater is a render command identity");
+}
+
+void R_Cmd_TileDrawSelected(const struct tile_desc *in,
+                           const void *chunk_rprivate, mat4x4_t *model,
+                           const int *tiles_per_chunk_x,
+                           const int *tiles_per_chunk_z)
+{
+    (void)in;
+    (void)chunk_rprivate;
+    (void)model;
+    (void)tiles_per_chunk_x;
+    (void)tiles_per_chunk_z;
+    assert(!"R_Cmd_TileDrawSelected is a render command identity");
+}
+
+void R_Cmd_TileUpdate(void *chunk_rprivate, const struct map *map,
+                     const struct tile_desc *desc)
+{
+    (void)chunk_rprivate;
+    (void)map;
+    (void)desc;
+    assert(!"R_Cmd_TileUpdate is a render command identity");
+}
+
+void R_Cmd_TilePatchVertsBlend(void *chunk_rprivate, const struct map *map,
+                              const struct tile_desc *tile)
+{
+    (void)chunk_rprivate;
+    (void)map;
+    (void)tile;
+    assert(!"R_Cmd_TilePatchVertsBlend is a render command identity");
+}
+
+void R_Cmd_TilePatchVertsSmooth(void *chunk_rprivate, const struct map *map,
+                               const struct tile_desc *tile)
+{
+    (void)chunk_rprivate;
+    (void)map;
+    (void)tile;
+    assert(!"R_Cmd_TilePatchVertsSmooth is a render command identity");
+}
+
+void R_Cmd_MinimapBake(const struct map *map, void **chunk_rprivates,
+                      mat4x4_t *chunk_model_mats)
+{
+    (void)map;
+    (void)chunk_rprivates;
+    (void)chunk_model_mats;
+    assert(!"R_Cmd_MinimapBake is a render command identity");
+}
+
+void R_Cmd_MinimapUpdateChunk(const struct map *map, void *chunk_rprivate,
+                             mat4x4_t *chunk_model, const int *chunk_r,
+                             const int *chunk_c)
+{
+    (void)map;
+    (void)chunk_rprivate;
+    (void)chunk_model;
+    (void)chunk_r;
+    (void)chunk_c;
+    assert(!"R_Cmd_MinimapUpdateChunk is a render command identity");
+}
+
+void R_Cmd_MinimapRender(const struct map *map, const struct camera *cam,
+                        vec2_t *center_pos, const int *side_len_px,
+                        vec4_t *border_clr)
+{
+    (void)map;
+    (void)cam;
+    (void)center_pos;
+    (void)side_len_px;
+    (void)border_clr;
+    assert(!"R_Cmd_MinimapRender is a render command identity");
+}
+
+void R_Cmd_MinimapRenderUnits(const struct map *map, vec2_t *center_pos,
+                             const int *side_len_px, size_t *nunits,
+                             vec2_t *posbuff, vec3_t *colorbuff)
+{
+    (void)map;
+    (void)center_pos;
+    (void)side_len_px;
+    (void)nunits;
+    (void)posbuff;
+    (void)colorbuff;
+    assert(!"R_Cmd_MinimapRenderUnits is a render command identity");
+}
+
+void R_Cmd_MinimapFree(void)
+{
+    assert(!"R_Cmd_MinimapFree is a render command identity");
+}
+
+void R_Cmd_UI_Init(void)
+{
+    assert(!"R_Cmd_UI_Init is a render command identity");
+}
+
+void R_Cmd_UI_Shutdown(void)
+{
+    assert(!"R_Cmd_UI_Shutdown is a render command identity");
+}
+
+void R_Cmd_UI_Render(const struct nk_draw_list *dl)
+{
+    (void)dl;
+    assert(!"R_Cmd_UI_Render is a render command identity");
+}
+
+void R_Cmd_UI_UploadFontAtlas(void *image, const int *w, const int *h)
+{
+    (void)image;
+    (void)w;
+    (void)h;
+    assert(!"R_Cmd_UI_UploadFontAtlas is a render command identity");
+}
+
+void R_Cmd_SkyboxLoad(const char *dir, const char *extension)
+{
+    (void)dir;
+    (void)extension;
+    assert(!"R_Cmd_SkyboxLoad is a render command identity");
+}
+
+void R_Cmd_DrawSkybox(const struct camera *cam)
+{
+    (void)cam;
+    assert(!"R_Cmd_DrawSkybox is a render command identity");
+}
+
+void R_Cmd_SkyboxFree(void)
+{
+    assert(!"R_Cmd_SkyboxFree is a render command identity");
+}
 
 /*****************************************************************************/
 /* STATIC FUNCTIONS                                                          */
@@ -104,30 +695,30 @@ static void res_commit(const struct sval *new_val)
     int width, height;
     Engine_WinDrawableSize(&width, &height);
 
-    if(PF_RENDER_BACKEND_OPENGL) {
-        extern void R_GL_SetViewport(int *x, int *y, int *w, int *h);
-        extern void R_GL_SwapchainSetRes(int *x, int *y);
+#if PF_RENDER_BACKEND_OPENGL
+    extern void R_GL_SetViewport(int *x, int *y, int *w, int *h);
+    extern void R_GL_SwapchainSetRes(int *x, int *y);
 
-        int viewport[4] = {0, 0, width, height};
-        R_PushCmd((struct rcmd){
-            .func = R_GL_SetViewport,
-            .nargs = 4,
-            .args = {
-                R_PushArg(&viewport[0], sizeof(viewport[0])),
-                R_PushArg(&viewport[1], sizeof(viewport[1])),
-                R_PushArg(&viewport[2], sizeof(viewport[2])),
-                R_PushArg(&viewport[3], sizeof(viewport[3])),
-            },
-        });
-        R_PushCmd((struct rcmd){
-            .func = R_GL_SwapchainSetRes,
-            .nargs = 2,
-            .args = {
-                R_PushArg(&viewport[2], sizeof(viewport[2])),
-                R_PushArg(&viewport[3], sizeof(viewport[3]))
-            }
-        });
-    }
+    int viewport[4] = {0, 0, width, height};
+    R_PushCmd((struct rcmd){
+        .func = R_GL_SetViewport,
+        .nargs = 4,
+        .args = {
+            R_PushArg(&viewport[0], sizeof(viewport[0])),
+            R_PushArg(&viewport[1], sizeof(viewport[1])),
+            R_PushArg(&viewport[2], sizeof(viewport[2])),
+            R_PushArg(&viewport[3], sizeof(viewport[3])),
+        },
+    });
+    R_PushCmd((struct rcmd){
+        .func = R_GL_SwapchainSetRes,
+        .nargs = 2,
+        .args = {
+            R_PushArg(&viewport[2], sizeof(viewport[2])),
+            R_PushArg(&viewport[3], sizeof(viewport[3]))
+        }
+    });
+#endif
 }
 
 static bool dm_validate(const struct sval *new_val)

@@ -76,5 +76,11 @@ void R_Yield(void);
 
 /* Tile */
 void R_TileGetVertices(const struct map *map, struct tile_desc td, struct terrain_vert *out);
+void R_TilePatchVertsBlend_Impl(void *chunk_rprivate, const struct map *map,
+                                const struct tile_desc *tile);
+void R_TilePatchVertsSmooth_Impl(void *chunk_rprivate, const struct map *map,
+                                 const struct tile_desc *tile);
+void R_TileUpdate_Impl(void *chunk_rprivate, const struct map *map,
+                       const struct tile_desc *desc);
 
 #endif

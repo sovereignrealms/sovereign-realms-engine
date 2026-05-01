@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import sys
@@ -13,10 +14,13 @@ import rts.main as demo_main
 
 PROBE_PATH = "/tmp/pf_metal_gameplay_smoke_probe.txt"
 ERROR_PATH = "/tmp/pf_metal_gameplay_smoke_probe_error.txt"
+DEFAULT_OUTPUT_DIR = "visual_parity_captures/gameplay-smoke-probe"
 
 STATE = {
     "phase": "init",
     "ticks": 0,
+    "output_dir": None,
+    "expected_backend": "METAL",
     "camera_checked": False,
     "selection_checked": False,
     "move_checked": False,
@@ -31,7 +35,20 @@ STATE = {
     "motion_started": False,
     "attack_started": False,
     "phase_started_at": None,
+    "phase_log": [],
+    "frame_ms": [],
+    "force_gpu_movement": False,
+    "gpu_movement_enabled": None,
 }
+
+
+def _arg_value(name, default=None):
+    if name not in sys.argv:
+        return default
+    idx = sys.argv.index(name)
+    if idx + 1 >= len(sys.argv):
+        return default
+    return sys.argv[idx + 1]
 
 
 def _write(path, payload):
@@ -39,10 +56,15 @@ def _write(path, payload):
         outfile.write(payload + "\n")
 
 
+def _env_flag(name):
+    return os.environ.get(name) == "1"
+
+
 def _set_phase(name):
     STATE["phase"] = name
     STATE["ticks"] = 0
     STATE["phase_started_at"] = time.monotonic()
+    STATE["phase_log"].append(name)
     print("METAL_GAMEPLAY_SMOKE_PHASE {0}".format(name))
     sys.stdout.flush()
 
@@ -52,17 +74,81 @@ def _phase_elapsed():
 
 
 def _fail(reason):
+    _write_summary("fail", reason)
     _write(ERROR_PATH, str(reason))
     print("METAL_GAMEPLAY_SMOKE_FAIL {0}".format(reason))
     sys.stdout.flush()
     os._exit(1)
 
 
+def _metrics_summary(samples):
+    if not samples:
+        return {"count": 0, "avg_ms": None, "min_ms": None, "max_ms": None}
+    return {
+        "count": len(samples),
+        "avg_ms": sum(samples) / float(len(samples)),
+        "min_ms": min(samples),
+        "max_ms": max(samples),
+    }
+
+
+def _summary_path(backend):
+    if not STATE["output_dir"]:
+        return None
+    return os.path.join(STATE["output_dir"], "summary_{0}.json".format(backend.lower()))
+
+
+def _write_summary(status, reason=None):
+    backend = pf.get_render_info().get("backend", "unknown")
+    path = _summary_path(backend)
+    if not path:
+        return
+    selected = STATE["selected"] or []
+    enemy = STATE["enemy"]
+    payload = {
+        "status": status,
+        "reason": reason,
+        "backend": pf.get_render_info(),
+        "expected_backend": STATE["expected_backend"],
+        "checks": {
+            "camera": STATE["camera_checked"],
+            "selection": STATE["selection_checked"],
+            "move": STATE["move_checked"],
+            "pause": STATE["pause_checked"],
+            "attack": STATE["attack_checked"],
+        },
+        "phase_log": STATE["phase_log"],
+        "frame_ms": _metrics_summary(STATE["frame_ms"]),
+        "force_gpu_movement": STATE["force_gpu_movement"],
+        "gpu_movement_enabled": STATE["gpu_movement_enabled"],
+        "selected": [
+            {
+                "name": getattr(ent, "name", "unit"),
+                "position": _ent_xz(ent),
+            }
+            for ent in selected
+        ],
+        "move_target": STATE["move_target"],
+        "enemy": None if enemy is None else {
+            "name": getattr(enemy, "name", "enemy"),
+            "position": _ent_xz(enemy),
+            "hp_start": STATE["enemy_hp"],
+            "hp_end": getattr(enemy, "hp", None),
+        },
+    }
+    with open(path, "w") as outfile:
+        json.dump(payload, outfile, indent=2, sort_keys=True)
+        outfile.write("\n")
+    print("METAL_GAMEPLAY_SMOKE_SUMMARY {0}".format(path))
+    sys.stdout.flush()
+
+
 def _succeed():
+    _write_summary("pass")
     marker = (
         "METAL_GAMEPLAY_SMOKE_PASS "
         "backend={backend} camera={camera} selection={selection} "
-        "move={move} pause={pause} attack={attack}"
+        "move={move} pause={pause} attack={attack} gpu_movement={gpu}"
     ).format(
         backend=pf.get_render_info().get("backend"),
         camera=int(STATE["camera_checked"]),
@@ -70,6 +156,7 @@ def _succeed():
         move=int(STATE["move_checked"]),
         pause=int(STATE["pause_checked"]),
         attack=int(STATE["attack_checked"]),
+        gpu=int(bool(STATE["gpu_movement_enabled"])),
     )
     _write(PROBE_PATH, marker)
     print(marker)
@@ -198,11 +285,20 @@ def on_update(user, event):
     del event
 
     STATE["ticks"] += 1
+    try:
+        STATE["frame_ms"].append(float(pf.prev_frame_ms()))
+    except Exception:
+        pass
 
     if STATE["phase"] == "init":
         backend = pf.get_render_info().get("backend")
-        if backend != "METAL":
-            _fail("expected METAL backend, got {0}".format(backend))
+        if STATE["expected_backend"] and backend != STATE["expected_backend"]:
+            _fail("expected {0} backend, got {1}".format(STATE["expected_backend"], backend))
+        if STATE["force_gpu_movement"]:
+            pf.settings_set("pf.game.movement_use_gpu", True, persist=False)
+            if not bool(pf.settings_get("pf.game.movement_use_gpu")):
+                _fail("GPU movement request was rejected by the active backend")
+        STATE["gpu_movement_enabled"] = bool(pf.settings_get("pf.game.movement_use_gpu"))
 
         selected, enemy = _choose_units()
         STATE["selected"] = selected
@@ -279,5 +375,24 @@ def on_update(user, event):
         if _phase_elapsed() > 20.0:
             _fail("attack did not start or reduce target hp")
 
-demo_main.main()
-pf.register_ui_event_handler(pf.EVENT_UPDATE_START, on_update, None)
+
+def main():
+    output_dir = _arg_value("--output-dir",
+                            os.environ.get("PF_GAMEPLAY_SMOKE_OUTPUT_DIR", DEFAULT_OUTPUT_DIR))
+    if not os.path.isabs(output_dir):
+        output_dir = os.path.join(pf.get_basedir(), output_dir)
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
+    STATE["output_dir"] = output_dir
+    STATE["expected_backend"] = _arg_value(
+        "--expect-backend",
+        os.environ.get("PF_GAMEPLAY_SMOKE_EXPECT_BACKEND", "METAL"),
+    )
+    STATE["force_gpu_movement"] = _env_flag("PF_GAMEPLAY_SMOKE_FORCE_GPU_MOVEMENT")
+    if "--force-gpu-movement" in sys.argv:
+        STATE["force_gpu_movement"] = True
+    demo_main.main()
+    pf.register_ui_event_handler(pf.EVENT_UPDATE_START, on_update, None)
+
+
+main()

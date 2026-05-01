@@ -570,8 +570,10 @@ static float tile_min_visible_height(const struct map *map, struct tile_desc til
 /* EXTERN FUNCTIONS                                                          */
 /*****************************************************************************/
 
-void R_GL_TileDrawSelected(const struct tile_desc *in, const void *chunk_rprivate, mat4x4_t *model, 
-                           const int *tiles_per_chunk_x, const int *tiles_per_chunk_z)
+void R_GL_TileDrawSelected_Impl(const struct tile_desc *in,
+                                const void *chunk_rprivate, mat4x4_t *model,
+                                const int *tiles_per_chunk_x,
+                                const int *tiles_per_chunk_z)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -656,7 +658,8 @@ void R_GL_TileDrawSelected(const struct tile_desc *in, const void *chunk_rprivat
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_TilePatchVertsBlend(void *chunk_rprivate, const struct map *map, const struct tile_desc *tile)
+void R_TilePatchVertsBlend_Impl(void *chunk_rprivate, const struct map *map,
+                                const struct tile_desc *tile)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -893,7 +896,8 @@ void R_GL_TilePatchVertsBlend(void *chunk_rprivate, const struct map *map, const
 #endif
 }
 
-void R_GL_TilePatchVertsSmooth(void *chunk_rprivate, const struct map *map, const struct tile_desc *tile)
+void R_TilePatchVertsSmooth_Impl(void *chunk_rprivate, const struct map *map,
+                                 const struct tile_desc *tile)
 {
     ASSERT_IN_RENDER_THREAD();
 
@@ -1015,7 +1019,8 @@ void R_GL_TilePatchVertsSmooth(void *chunk_rprivate, const struct map *map, cons
 #endif
 }
 
-void R_GL_TileUpdate(void *chunk_rprivate, const struct map *map, const struct tile_desc *desc)
+void R_TileUpdate_Impl(void *chunk_rprivate, const struct map *map,
+                       const struct tile_desc *desc)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -1042,12 +1047,14 @@ void R_GL_TileUpdate(void *chunk_rprivate, const struct map *map, const struct t
     glUnmapBuffer(GL_ARRAY_BUFFER);
 #endif
 
-    R_GL_TilePatchVertsBlend(chunk_rprivate, map, desc);
+    R_TilePatchVertsBlend_Impl(chunk_rprivate, map, desc);
     if(tile->blend_normals) {
-        R_GL_TilePatchVertsSmooth(chunk_rprivate, map, desc);
+        R_TilePatchVertsSmooth_Impl(chunk_rprivate, map, desc);
     }
 
+#if !PF_RENDER_BACKEND_METAL
     GL_ASSERT_OK();
+#endif
     GL_PERF_RETURN_VOID();
 }
 

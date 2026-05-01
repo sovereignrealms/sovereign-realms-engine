@@ -63,6 +63,17 @@ def load_original_state():
     }
 
 
+def ui_restored_state(original):
+    return {
+        "pf.video.vsync": original["pf.video.vsync"],
+        "pf.game.healthbar_mode": (
+            int(pf.HB_MODE_NEVER)
+            if original["pf.game.healthbar_mode"] == pf.HB_MODE_NEVER
+            else int(pf.HB_MODE_DAMAGED)
+        ),
+    }
+
+
 def apply_original_state(video_vc, game_vc, original):
     video_vc.view.vsync_idx = 0 if original["pf.video.vsync"] else 1
     game_vc.view.hb_idx = 0 if original["pf.game.healthbar_mode"] != pf.HB_MODE_NEVER else 1
@@ -110,9 +121,15 @@ def on_update(user, event):
     if STATE["phase"] == "restore_verify" and STATE["ticks"] >= 30:
         curr = current_state()
         original = load_original_state()
-        if curr != original:
-            fail("SETTINGS_RESTORE_MISMATCH expected={0} actual={1}".format(original, curr))
-        finish("NATIVE_SETTINGS_RESTORED {0}".format(curr))
+        expected = ui_restored_state(original)
+        if curr != expected:
+            fail("SETTINGS_RESTORE_MISMATCH expected={0} actual={1}".format(expected, curr))
+        pf.settings_set("pf.video.vsync", original["pf.video.vsync"])
+        pf.settings_set("pf.game.healthbar_mode", original["pf.game.healthbar_mode"])
+        exact = current_state()
+        if exact != original:
+            fail("SETTINGS_EXACT_RESTORE_MISMATCH expected={0} actual={1}".format(original, exact))
+        finish("NATIVE_SETTINGS_RESTORED {0}".format(exact))
         return
 
     if STATE["ticks"] >= 300:

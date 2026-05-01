@@ -41,7 +41,7 @@
 
 #include "gl_assert.h"
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !PF_RENDER_BACKEND_METAL
 
 extern bool g_trace_gpu;
 

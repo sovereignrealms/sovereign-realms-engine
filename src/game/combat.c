@@ -2250,7 +2250,7 @@ static void combat_render_targets(void)
             };
 
             R_PushCmd((struct rcmd){
-                .func = R_GL_DrawRay,
+                .func = R_Cmd_DrawRay,
                 .nargs = 5,
                 .args = {
                     R_PushArg(&raised_pos, sizeof(raised_pos)),
@@ -2267,7 +2267,7 @@ static void combat_render_targets(void)
         }
 
         R_PushCmd((struct rcmd){
-            .func = R_GL_DrawSelectionCircle,
+            .func = R_Cmd_DrawSelectionCircle,
             .nargs = 5,
             .args = {
                 R_PushArg(&ent_pos, sizeof(ent_pos)),
@@ -2308,7 +2308,7 @@ static void combat_render_ranges(void)
         vec3_t red = (vec3_t){1.0f, 0.0f, 0.0f};
 
         R_PushCmd((struct rcmd){
-            .func = R_GL_DrawSelectionCircle,
+            .func = R_Cmd_DrawSelectionCircle,
             .nargs = 5,
             .args = {
                 R_PushArg(&ent_pos, sizeof(ent_pos)),

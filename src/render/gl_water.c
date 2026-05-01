@@ -56,6 +56,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 
 struct render_water_ctx{
@@ -129,7 +130,7 @@ static void restore_gl_state(const struct water_gl_state *in)
     glBindRenderbuffer(GL_RENDERBUFFER, in->rbo);
     glViewport(in->viewport[0], in->viewport[1], in->viewport[2], in->viewport[3]);
     glClearColor(in->clear_clr[0], in->clear_clr[1], in->clear_clr[2], in->clear_clr[3]);
-    R_GL_SetViewMatAndPos(&in->u_view, &in->u_cam_pos);
+    R_GL_SetViewMatAndPos_Impl(&in->u_view, &in->u_cam_pos);
 
     GL_PERF_RETURN_VOID();
 }
@@ -186,6 +187,34 @@ static GLuint make_new_depth_tex(int width, int height)
 
     GL_ASSERT_OK();
     GL_PERF_RETURN(ret);
+}
+
+static void dump_reflection_tex_if_requested(int width, int height)
+{
+    const char *path = getenv("PF_GL_WATER_REFLECTION_DUMP_RGBA8_PATH");
+    if(!path || !*path)
+        return;
+
+    size_t row_bytes = (size_t)width * 4;
+    size_t total = row_bytes * (size_t)height;
+    unsigned char *pixels = malloc(total);
+    if(!pixels)
+        return;
+
+    GLint old_pack_alignment;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &old_pack_alignment);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_PACK_ALIGNMENT, old_pack_alignment);
+
+    FILE *fp = fopen(path, "wb");
+    if(fp) {
+        fwrite(pixels, 1, total, fp);
+        fclose(fp);
+        fprintf(stderr, "PF_GL_WATER_REFLECTION_DUMP_RGBA8 wrote %dx%d RGBA8 raw to %s\n",
+            width, height, path);
+    }
+    free(pixels);
 }
 
 static void render_refraction_tex(GLuint clr_tex, GLuint depth_tex, bool on, struct render_input in)
@@ -248,7 +277,7 @@ static void render_non_parallax_skybox(const struct camera *cam, const struct re
         res.chunk_h * res.tile_h * Z_COORDS_PER_TILE
     };
 
-    R_GL_DrawSkyboxScaled(cam, &map_size.x, &map_size.z);
+    R_GL_DrawSkyboxScaled_Impl(cam, &map_size.x, &map_size.z);
 }
 
 static void render_reflection_tex(GLuint tex, bool on, struct render_input in)
@@ -317,6 +346,7 @@ static void render_reflection_tex(GLuint tex, bool on, struct render_input in)
     G_RenderMapAndEntities(&in);
     GL_PERF_POP_GROUP();
     render_non_parallax_skybox(cam, &in);
+    dump_reflection_tex_if_requested(texw, texh);
 
     /* Clean up framebuffer */
     glDeleteRenderbuffers(1, &depth_rb);
@@ -494,6 +524,24 @@ static void setup_move_factor(GLuint shader_prog)
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
 
+    const char *fixed_phase = getenv("PF_RENDER_WATER_MOVE_FACTOR");
+    if(fixed_phase && *fixed_phase) {
+        char *end = NULL;
+        double parsed = strtod(fixed_phase, &end);
+        if(end != fixed_phase) {
+            double intpart;
+            s_ctx.move_factor = modf(parsed, &intpart);
+            if(s_ctx.move_factor < 0.0f)
+                s_ctx.move_factor += 1.0f;
+            R_GL_StateSet(GL_U_MOVE_FACTOR, (struct uval){
+                .type = UTYPE_FLOAT,
+                .val.as_float = s_ctx.move_factor
+            });
+            R_GL_StateInstall(GL_U_MOVE_FACTOR, shader_prog);
+            GL_PERF_RETURN_VOID();
+        }
+    }
+
     double intpart;
     uint32_t curr = SDL_GetTicks();
     uint32_t delta = curr - s_ctx.prev_frame_tick;
@@ -559,7 +607,7 @@ static void configure_water_map(GLuint texid)
 /* EXTERN FUNCTIONS                                                          */
 /*****************************************************************************/
 
-void R_GL_WaterInit(void)
+void R_GL_WaterInit_Impl(void)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -589,7 +637,7 @@ fail_dudv:
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_WaterShutdown(void)
+void R_GL_WaterShutdown_Impl(void)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -609,7 +657,7 @@ void R_GL_WaterShutdown(void)
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_DrawWater(const struct render_input *in, const bool *refraction, const bool *reflection)
+void R_GL_DrawWater_Impl(const struct render_input *in, const bool *refraction, const bool *reflection)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();

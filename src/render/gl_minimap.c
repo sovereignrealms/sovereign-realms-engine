@@ -253,7 +253,7 @@ static void draw_minimap_terrain(struct render_private *priv, mat4x4_t *chunk_mo
     };
     size_t num_splats = 0;
     struct splatmap empty = {0};
-    R_GL_MapBegin(&fval, &pos, &num_splats, &empty, &res, map);
+    R_GL_MapBegin_Impl(&fval, &pos, &num_splats, &empty, &res, map);
 
     /* Clip everything below the 'Shallow Water' level. The 'Shallow Water' is 
      * rendered as just normal terrain. */
@@ -264,10 +264,10 @@ static void draw_minimap_terrain(struct render_private *priv, mat4x4_t *chunk_mo
     /* Don't draw any shadows on the minimap */
     bool prev;
     push_shadow_state(&prev);
-    R_GL_Draw(priv, chunk_model_mat, &fval); 
+    R_GL_Draw_Impl(priv, chunk_model_mat, &fval);
     pop_shadow_state(prev);
 
-    R_GL_MapEnd();
+    R_GL_MapEnd_Impl();
     glDisable(GL_CLIP_DISTANCE0);
 
     GL_PERF_RETURN_VOID();
@@ -348,7 +348,7 @@ static void create_minimap_texture(const struct map *map, void **chunk_rprivates
         draw_minimap_terrain(priv, mat, res, map);
     }}
 
-    R_GL_MapInvalidate();
+    R_GL_MapInvalidate_Impl();
 
     glDeleteFramebuffers(1, &fb);
     GL_ASSERT_OK();
@@ -395,8 +395,8 @@ static void create_water_texture(const struct map *map)
     };
 
     R_GL_MapUpdateFogClear();
-    R_GL_DrawWater(&in, &fval, &fval);
-    R_GL_MapInvalidate();
+    R_GL_DrawWater_Impl(&in, &fval, &fval);
+    R_GL_MapInvalidate_Impl();
 
     glDeleteFramebuffers(1, &fb);
 
@@ -564,8 +564,8 @@ static void restore_lighting(vec3_t old_ambient, vec3_t old_emit, vec3_t old_pos
 /* EXTERN FUNCTIONS                                                          */
 /*****************************************************************************/
 
-void R_GL_MinimapBake(const struct map *map, void **chunk_rprivates, 
-                      mat4x4_t *chunk_model_mats)
+void R_GL_MinimapBake_Impl(const struct map *map, void **chunk_rprivates,
+                           mat4x4_t *chunk_model_mats)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -599,8 +599,9 @@ void R_GL_MinimapBake(const struct map *map, void **chunk_rprivates,
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_MinimapUpdateChunk(const struct map *map, void *chunk_rprivate, 
-                             mat4x4_t *chunk_model, const int *chunk_r, const int *chunk_c)
+void R_GL_MinimapUpdateChunk_Impl(const struct map *map, void *chunk_rprivate,
+                                  mat4x4_t *chunk_model, const int *chunk_r,
+                                  const int *chunk_c)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -630,7 +631,7 @@ void R_GL_MinimapUpdateChunk(const struct map *map, void *chunk_rprivate,
     draw_minimap_water(map, (struct coord){*chunk_r, *chunk_c});
     draw_minimap_terrain(chunk_rprivate, chunk_model, res, map);
 
-    R_GL_MapInvalidate();
+    R_GL_MapInvalidate_Impl();
 
     int width, height;
     Engine_WinDrawableSize(&width, &height);
@@ -645,8 +646,9 @@ void R_GL_MinimapUpdateChunk(const struct map *map, void *chunk_rprivate,
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_MinimapRender(const struct map *map, const struct camera *cam, 
-                        vec2_t *center_pos, const int *side_len_px, vec4_t *border_clr)
+void R_GL_MinimapRender_Impl(const struct map *map, const struct camera *cam,
+                             vec2_t *center_pos, const int *side_len_px,
+                             vec4_t *border_clr)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -729,9 +731,9 @@ void R_GL_MinimapRender(const struct map *map, const struct camera *cam,
     GL_PERF_RETURN_VOID();
 }
 
-void  R_GL_MinimapRenderUnits(const struct map *map, vec2_t *center_pos, 
-                              const int *side_len_px, size_t *nunits, 
-                              vec2_t *posbuff, vec3_t *colorbuff)
+void R_GL_MinimapRenderUnits_Impl(const struct map *map, vec2_t *center_pos,
+                                  const int *side_len_px, size_t *nunits,
+                                  vec2_t *posbuff, vec3_t *colorbuff)
 {
     GL_PERF_ENTER();
     ASSERT_IN_RENDER_THREAD();
@@ -760,7 +762,7 @@ void  R_GL_MinimapRenderUnits(const struct map *map, vec2_t *center_pos,
     GL_PERF_RETURN_VOID();
 }
 
-void R_GL_MinimapFree(void)
+void R_GL_MinimapFree_Impl(void)
 {
     ASSERT_IN_RENDER_THREAD();
 
