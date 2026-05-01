@@ -792,7 +792,10 @@ reverted independently. Working notebook: [a.md](../a.md).
     hardening added importable probe entity classes plus per-object scene
     metadata so the Python 3 scene snapshot recreates movable/resource/storage/
     buildable/garrisonable probe entities before native movement/resource state
-    is loaded.
+    is loaded. The follow-up scale pass adds opt-in map/content/duration knobs
+    and verifies a 10x10 Metal generated-world run with 54 restored objects,
+    5 regions, 4 cameras, and a longer post-combat soak; the OpenGL reference
+    passes the same scaled gameplay path.
 
 ## Current Status
 
@@ -866,8 +869,10 @@ reverted independently. Working notebook: [a.md](../a.md).
   `visual_parity_captures/2026-05-01-mixed-gameplay-scenario-metal-final/` and
   `visual_parity_captures/2026-05-01-mixed-gameplay-scenario-opengl/`.
 - Latest large generated-world soak probe artifacts:
-  `visual_parity_captures/2026-05-01-large-world-soak-restore-metal/` and
-  `visual_parity_captures/2026-05-01-large-world-soak-restore-opengl/`.
+  baseline restore at `visual_parity_captures/2026-05-01-large-world-soak-restore-metal/`
+  and `visual_parity_captures/2026-05-01-large-world-soak-restore-opengl/`;
+  scaled 10x10 soak at `visual_parity_captures/2026-05-01-large-world-soak-scale-metal-final/`
+  and `visual_parity_captures/2026-05-01-large-world-soak-scale-opengl/`.
 - Latest mesh shadow formula parity artifact: `visual_parity_captures/2026-04-24-metal-mesh-shadow-parity/`.
 - Latest terrain shadow coverage parity artifact: `visual_parity_captures/2026-04-24-metal-terrain-shadow-coverage/`.
 - Latest water/shore/fog parity artifact: `visual_parity_captures/2026-04-24-metal-water-fog-parity/`.

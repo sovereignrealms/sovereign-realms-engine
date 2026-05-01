@@ -62,6 +62,7 @@ STATE = {
     "phase_started_at": None,
     "phase_log": [],
     "frame_ms": [],
+    "config": {},
     "entities": [],
     "combat_units": [],
     "mages": [],
@@ -113,11 +114,32 @@ def _arg_value(name, default=None):
     return sys.argv[idx + 1]
 
 
-def _env_int(name, default):
+def _arg_int(name, env_name, default, minimum=None):
+    value = _arg_value(name)
+    if value is None:
+        value = os.environ.get(env_name, default)
     try:
-        return int(os.environ.get(name, default))
+        value = int(value)
     except (TypeError, ValueError):
-        return default
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    return value
+
+
+def _setup_config():
+    STATE["config"] = {
+        "rows": _arg_int("--rows", "PF_LARGE_WORLD_SOAK_ROWS", 8, minimum=5),
+        "cols": _arg_int("--cols", "PF_LARGE_WORLD_SOAK_COLS", 8, minimum=5),
+        "extra_objects": _arg_int("--extra-objects", "PF_LARGE_WORLD_SOAK_EXTRA_OBJECTS", 0, minimum=0),
+        "extra_regions": _arg_int("--extra-regions", "PF_LARGE_WORLD_SOAK_EXTRA_REGIONS", 0, minimum=0),
+        "extra_cameras": _arg_int("--extra-cameras", "PF_LARGE_WORLD_SOAK_EXTRA_CAMERAS", 0, minimum=0),
+        "navgrid_settle_ticks": _arg_int("--navgrid-settle-ticks", "PF_LARGE_WORLD_SOAK_NAVGRID_SETTLE_TICKS", 120, minimum=1),
+        "waypoint_settle_ticks": _arg_int("--waypoint-settle-ticks", "PF_LARGE_WORLD_SOAK_WAYPOINT_SETTLE_TICKS", 90, minimum=1),
+        "dynamic_tile_settle_ticks": _arg_int("--dynamic-tile-settle-ticks", "PF_LARGE_WORLD_SOAK_DYNAMIC_TILE_SETTLE_TICKS", 45, minimum=1),
+        "pre_save_settle_ticks": _arg_int("--pre-save-settle-ticks", "PF_LARGE_WORLD_SOAK_PRE_SAVE_SETTLE_TICKS", 60, minimum=1),
+        "post_combat_soak_ticks": _arg_int("--post-combat-soak-ticks", "PF_LARGE_WORLD_SOAK_POST_COMBAT_SOAK_TICKS", 0, minimum=0),
+    }
 
 
 def _write(path, payload):
@@ -258,6 +280,7 @@ def _write_summary(status, reason=None):
         "reason": reason,
         "backend": pf.get_render_info(),
         "expected_backend": STATE["expected_backend"],
+        "config": STATE["config"],
         "checks": STATE["checks"],
         "events": STATE["events"],
         "phase_log": STATE["phase_log"],
@@ -293,12 +316,16 @@ def _succeed():
     _write_summary("pass")
     marker = (
         "LARGE_WORLD_SOAK_PASS backend={backend} map={rows}x{cols} "
+        "objects={objects} regions={regions} cameras={cameras} "
         "exploration={exploration} economy={economy} combat={combat} "
         "effects={effects} session={session}"
     ).format(
         backend=pf.get_render_info().get("backend"),
         rows=STATE["map"].get("rows"),
         cols=STATE["map"].get("cols"),
+        objects=len(rts.globals.scene_objs),
+        regions=len(rts.globals.scene_regions),
+        cameras=len(rts.globals.scene_cameras),
         exploration=int(STATE["checks"]["exploration"]),
         economy=int(
             STATE["checks"]["resource_gather"]
@@ -661,8 +688,8 @@ def _ensure_probe_factions():
 
 
 def _setup_map():
-    rows = max(5, _env_int("PF_LARGE_WORLD_SOAK_ROWS", 8))
-    cols = max(5, _env_int("PF_LARGE_WORLD_SOAK_COLS", 8))
+    rows = STATE["config"]["rows"]
+    cols = STATE["config"]["cols"]
     pf.load_map_string(_build_pfmap(rows, cols), update_navgrid=True)
     pf.set_ambient_light_color((1.0, 1.0, 1.0))
     pf.set_emit_light_color((1.0, 1.0, 1.0))
@@ -696,6 +723,25 @@ def _setup_map():
         )
     ]
     rts.globals.scene_cameras = [camera]
+    for idx, point in enumerate(_scale_points(rows, cols, STATE["config"]["extra_regions"])):
+        rts.globals.scene_regions.append(
+            pf.Region(
+                type=pf.REGION_RECTANGLE,
+                name="large_world_soak_region_{0}".format(idx),
+                position=point,
+                dimensions=(80.0, 80.0),
+            )
+        )
+    for idx, point in enumerate(_scale_points(rows, cols, STATE["config"]["extra_cameras"])):
+        rts.globals.scene_cameras.append(
+            pf.Camera(
+                name="large_world_soak_camera_{0}".format(idx),
+                mode=pf.CAM_MODE_FREE,
+                position=(point[0], 520.0, point[1]),
+                pitch=-62.0,
+                yaw=135.0,
+            )
+        )
 
     _ensure_probe_factions()
     pf.set_diplomacy_state(1, 2, pf.DIPLOMACY_STATE_WAR)
@@ -708,10 +754,56 @@ def _setup_map():
         "center": center,
         "minimap_size": pf.get_minimap_size(),
         "minimap_position": pf.get_minimap_position(),
+        "region_count": len(rts.globals.scene_regions),
+        "camera_count": len(rts.globals.scene_cameras),
     }
     STATE["checks"]["custom_map_loaded"] = True
     STATE["checks"]["fog_minimap"] = pf.get_minimap_size() > 0
     return rows, cols, center
+
+
+def _scale_points(rows, cols, count):
+    if count <= 0:
+        return []
+    total_r = rows * TILES_PER_CHUNK
+    total_c = cols * TILES_PER_CHUNK
+    points = []
+    for min_dist in (24.0, 12.0, 0.0):
+        grid = int(math.ceil(math.sqrt(count * 3.0))) + 2
+        for row in range(grid):
+            for col in range(grid):
+                if len(points) >= count:
+                    return points
+                frac_r = (row + 1.0) / (grid + 1.0)
+                frac_c = (col + 1.0) / (grid + 1.0)
+                point = _pathable_near(
+                    _world_for_tile(rows, cols, int(total_r * frac_r), int(total_c * frac_c)),
+                    radius=3.5,
+                )
+                if point is None:
+                    continue
+                if min_dist == 0.0 or all(_dist(point, seen) > min_dist for seen in points):
+                    points.append(point)
+    return points
+
+
+def _spawn_extra_content(rows, cols, count):
+    points = _scale_points(rows, cols, count)
+    spawned = []
+    makers = (
+        lambda idx, point: _make_resource("large_world_extra_resource_{0}".format(idx), point, amount=8),
+        lambda idx, point: _make_storage("large_world_extra_storage_{0}".format(idx), point),
+        lambda idx, point: _make_buildable("large_world_extra_buildable_{0}".format(idx), point),
+        lambda idx, point: _make_garrisonable("large_world_extra_garrisonable_{0}".format(idx), point),
+        lambda idx, point: _make_worker("large_world_extra_worker_{0}".format(idx), point),
+    )
+    for idx, point in enumerate(points):
+        ent = makers[idx % len(makers)](idx, point)
+        spawned.append(_snapshot_entity(ent))
+    STATE["map"]["extra_object_target"] = count
+    STATE["map"]["extra_object_count"] = len(spawned)
+    STATE["map"]["extra_objects"] = spawned[:12]
+    return spawned
 
 
 def _setup_entities(rows, cols, center):
@@ -847,7 +939,9 @@ def _setup_entities(rows, cols, center):
         "units": [_snapshot_entity(ent) for ent in combat_units],
         "enemy": _snapshot_entity(STATE["enemy"]),
     }
-    STATE["checks"]["content_loaded"] = len(rts.globals.scene_objs) >= 16
+    extra_objects = _spawn_extra_content(rows, cols, STATE["config"]["extra_objects"])
+    STATE["map"]["object_count"] = len(rts.globals.scene_objs)
+    STATE["checks"]["content_loaded"] = len(rts.globals.scene_objs) >= 16 + len(extra_objects)
 
 
 def _stage_combat_units(point):
@@ -876,7 +970,7 @@ def _exploration_phase():
             "target": point,
             "units": staged,
         })
-    if STATE["ticks"] < 90:
+    if STATE["ticks"] < STATE["config"]["waypoint_settle_ticks"]:
         return
     STATE["records"][-1]["units_after"] = [
         {"name": ent.name, "position": _safe_ent_xz(ent)}
@@ -923,7 +1017,7 @@ def _dynamic_tile_update_phase():
             "tile": tile_pos,
             "after": _tile_attrs(tile),
         }
-    if STATE["ticks"] >= 45:
+    if STATE["ticks"] >= STATE["config"]["dynamic_tile_settle_ticks"]:
         STATE["checks"]["dynamic_tile_update"] = True
         _set_phase("resource")
 
@@ -1145,11 +1239,30 @@ def _combat_phase():
         "projectile_hits": len(STATE["projectile_hits"]),
     })
     if ready:
-        _prepare_for_save()
-        _set_phase("pre_save_settle")
+        if STATE["config"]["post_combat_soak_ticks"] > 0:
+            _set_phase("post_combat_soak")
+        else:
+            _prepare_for_save()
+            _set_phase("pre_save_settle")
         return
     if _phase_elapsed() > 24.0:
         _fail(reason or "timed out waiting for combat/effects")
+
+
+def _post_combat_soak_phase():
+    if STATE["ticks"] == 1:
+        STATE["combat"]["post_combat_soak_ticks"] = STATE["config"]["post_combat_soak_ticks"]
+    if STATE["ticks"] % 90 == 0 and STATE["waypoints"]:
+        point = STATE["waypoints"][(STATE["ticks"] // 90) % len(STATE["waypoints"])]
+        pf.get_active_camera().center_over_location(point)
+        STATE["records"].append({
+            "name": "post_combat_soak_{0}".format(STATE["ticks"]),
+            "target": point,
+            "frame_ms": _metrics(STATE["frame_ms"][-90:]),
+        })
+    if STATE["ticks"] >= STATE["config"]["post_combat_soak_ticks"]:
+        _prepare_for_save()
+        _set_phase("pre_save_settle")
 
 
 def _prepare_for_save():
@@ -1262,7 +1375,7 @@ def on_update(user, event):
         return
 
     if STATE["phase"] == "navgrid_settle":
-        if STATE["ticks"] >= 120:
+        if STATE["ticks"] >= STATE["config"]["navgrid_settle_ticks"]:
             _setup_content()
             _set_phase("exploration")
         if _phase_elapsed() > 20.0:
@@ -1305,8 +1418,12 @@ def on_update(user, event):
         _combat_phase()
         return
 
+    if STATE["phase"] == "post_combat_soak":
+        _post_combat_soak_phase()
+        return
+
     if STATE["phase"] == "pre_save_settle":
-        if STATE["ticks"] >= 60:
+        if STATE["ticks"] >= STATE["config"]["pre_save_settle_ticks"]:
             _set_phase("save_session")
         return
 
@@ -1331,6 +1448,7 @@ def main():
         "--expect-backend",
         os.environ.get("PF_LARGE_WORLD_SOAK_EXPECT_BACKEND", "METAL"),
     )
+    _setup_config()
     os.environ["PF_METAL_SPRITE_STATS_PATH"] = RENDER_STATS_PATH
     os.environ["PF_PROJECTILE_SPRITE_STATS_PATH"] = PROJECTILE_STATS_PATH
 

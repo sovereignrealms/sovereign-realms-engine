@@ -31,7 +31,7 @@ Commands/results from the 2026-04-30 audit:
 | Dynamic obstacle behavior | `DYNAMIC_OBSTACLE_PASS backend=METAL mode=gpu started=1 blocker=1 pathing=1 progress=1 clearance=1`; OpenGL CPU reference also passed the same route/blocker scenario |
 | Production automation variants | `PRODUCTION_AUTOMATION_PASS backend=METAL toggle=1 idle=1 blocked=1 resumed=1 pickup=1 dropoff=1`; OpenGL reference also passed the same automation gate/resume scenario |
 | Mixed economy/combat scenario | `MIXED_GAMEPLAY_SCENARIO_PASS backend=METAL move=1 fog=1 resource=1 building=1 transport=1 garrison=1 combat=1 effects=1`; OpenGL reference passed the same scenario |
-| Large custom-world soak | `LARGE_WORLD_SOAK_RESTORE_PASS objs=18 regions=1 cameras=1` after `LARGE_WORLD_SOAK_PASS backend=METAL map=8x8 exploration=1 economy=1 combat=1 effects=1 session=1`; OpenGL reference passed the gameplay path with save skipped to avoid the generated-map session stall |
+| Large custom-world soak | Baseline restore passed with `LARGE_WORLD_SOAK_RESTORE_PASS objs=18 regions=1 cameras=1`. Scaled 10x10 run also passed with `LARGE_WORLD_SOAK_RESTORE_PASS objs=54 regions=5 cameras=4` after `LARGE_WORLD_SOAK_PASS backend=METAL map=10x10 objects=54 regions=5 cameras=4 exploration=1 economy=1 combat=1 effects=1 session=1`; OpenGL reference passed the same scaled gameplay path with save skipped to avoid the generated-map session stall |
 | Gameplay soak | `GAMEPLAY_SOAK_PASS backend=METAL stages=6 dynamic_water=0 combat=1` |
 | Water | `METAL_WATER_PROBE_PASS backend=METAL water_x=228.00 water_z=-148.00 water_h=-12.00` |
 | Sprite/VFX | `METAL_SPRITE_PROBE_PASS backend=METAL render_frames=24` and `METAL_GAMEPLAY_EFFECTS_PASS backend=METAL trail=1 impact=1 fire=1 smoke=1` |
@@ -102,4 +102,4 @@ For starting a real game on top of this engine, the answer is **yes**, with cons
 ## Recommended Next Targets
 
 1. Longer manual editor usability QA once the editor is packaged as a normal macOS app/window that Computer Use can attach to directly.
-2. Broader large-map soak duration and content scale-up: the generated-map checkpoint restore path is now verified, so the next useful stress target is longer runtime plus more objects/regions.
+2. Broader long-duration soak: the generated-map checkpoint restore path now verifies at 10x10 with 54 objects, 5 regions, 4 cameras, and a longer post-combat settle; the next stress target is longer wall-clock runtime with repeated gameplay loops.
