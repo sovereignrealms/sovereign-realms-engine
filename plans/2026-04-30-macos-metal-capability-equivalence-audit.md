@@ -67,7 +67,8 @@ Legend:
 | RTS selection/move/pause/attack | Verified | Gameplay smoke and soak pass. |
 | Pathfinding land/water/air query APIs | Verified | Capability inventory and the gameplay edge probe confirm land, water, and air nearest-pathable queries return valid values on both Metal and OpenGL. |
 | GPU movement / crowd compute path | Smoke verified | Metal forced-GPU smoke passes and dense 64-unit formation stress passes with GPU movement enabled; Metal CPU and OpenGL CPU sanity runs also pass. |
-| Formation movement / dynamic obstacle behavior | Smoke verified | Movement smoke/soak exercises group movement; dense 64-unit rank formation stress now exercises larger formation dispatch. Hungarian reshuffle and navigation-layer edge cases still need deeper dedicated probes. |
+| Formation movement / navigation-layer reshuffle | Verified | New navigation/formation edge probe covers 1x1/3x3/5x5/7x7 ground pathing, preferred-formation resolution, rank formation move, and column reshuffle on Metal GPU movement and the OpenGL CPU reference. |
+| Dynamic obstacle behavior | Smoke verified | Movement smoke/soak and dense formation stress exercise normal obstacle interaction; a dedicated dynamic blocker/avoidance probe remains future deeper matrix work. |
 | Resource gathering / base-building / garrison / transport | Smoke verified | Gameplay-systems probe creates controlled workers, resources, storage sites, build sites, transport jobs, automatic transport, and garrison orders on both Metal and OpenGL. The gameplay edge probe additionally covers water transport and `do_not_take_water` source restrictions on both backends. |
 | Ranged combat projectile physics | Verified | Gameplay-effects probe saw projectile trail and impact events. |
 | Configurable graphics settings | Verified | Settings apply/restore probes pass; restore probe now accounts for UI On/Off healthbar granularity and restores the exact original value through the API. |
