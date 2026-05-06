@@ -30,9 +30,17 @@ practical while adding Sovereign-specific game packages in dedicated folders:
 ```text
 scripts/sovereign/
 assets/sovereign/
+games/
 docs/sovereign/
+docs/modding/
 tools/asset_validation/
 ```
+
+The initial repository should keep the engine and early game/world packages
+together. This is easier while engine APIs, editor workflow, renderer parity,
+and gameplay scripts are still changing together. The boundary is folder-based:
+engine changes live in the root engine layout, while contributed worlds live
+under `games/<pack>/` with their own license and metadata.
 
 Later, after the vertical slice stabilizes, game-only content can split into a
 second repo such as:
@@ -51,8 +59,10 @@ archive, or sibling checkout.
 3. Preserve upstream `LICENSE.txt` and copyright notices.
 4. Keep `NOTICE.md` and `CHANGES.md` with the Permafrost-derived modification
    history.
-5. Push the branch to `sovereignrealms/sovereign-realms-engine`.
-6. Keep OpenGL as the reference backend until Metal parity and scale gates are
+5. Require each `games/<pack>/` contribution to include a local `LICENSE`,
+   `README.md`, and metadata file.
+6. Push the branch to `sovereignrealms/sovereign-realms-engine`.
+7. Keep OpenGL as the reference backend until Metal parity and scale gates are
    repeatedly green.
 
 Current publish-preflight branch:

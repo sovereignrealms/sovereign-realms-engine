@@ -1,5 +1,16 @@
 # Sovereign Realms Changes
 
+## 2026-05-07
+
+- Documented the single-repo early development model: engine, editor,
+  Sovereign game package, and world packs stay together until the first
+  vertical slice stabilizes.
+- Added `games/` as the contribution boundary for independent world/game packs.
+- Added `docs/modding/` notes for world-pack format and per-pack licensing.
+- Added `games/example_world/` as a minimal MIT-licensed example pack.
+- Extended publish preflight checks to require the world-pack documentation and
+  example pack boundary.
+
 ## 2026-05-06
 
 - Expanded the Sovereign runtime scaffold into verified Metal probes for

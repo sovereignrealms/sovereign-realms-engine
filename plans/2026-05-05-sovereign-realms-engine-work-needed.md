@@ -64,6 +64,8 @@ file records execution status as slices are completed and verified.
   ignore updates, README/NOTICE/CHANGES polish, and handoff checklist.
 - Strict publish blocker cleanup: DONE on `codex/sovereign-publish-preflight`;
   strict preflight reports `fails=0 warnings=0`.
+- Multi-world/game-pack repository policy: DONE for `games/` structure,
+  per-pack license docs, and MIT-licensed example pack.
 - GitHub organization push: PENDING.
 
 ## Completed Slice 1 — Repo/License And Package Bootstrap
@@ -2349,6 +2351,40 @@ Observed:
 SOVEREIGN_PUBLISH_INFO branch=codex/sovereign-publish-preflight
 SOVEREIGN_PUBLISH_READY_PASS fails=0 warnings=0 strict=1
 ```
+
+## Completed Slice 30 — Multi-World Pack Policy And Starter Structure
+
+Implemented:
+
+- Documented the single-repo early development policy: keep the engine,
+  editor, Sovereign game package, and early world/game packs together until the
+  first vertical slice stabilizes.
+- Added modding documentation:
+  - `docs/modding/licensing_worlds.md`
+  - `docs/modding/world_pack_format.md`
+- Added `games/README.md`.
+- Added `games/example_world/` as a minimal world-pack boundary:
+  - `LICENSE`
+  - `README.md`
+  - `world.json`
+- The example pack uses MIT for original pack content only. It does not
+  relicense Permafrost-derived engine code.
+- Updated `README.md`, `docs/sovereign/engine_work_needed.md`,
+  `docs/sovereign/repo_license_structure.md`,
+  `docs/sovereign/repo_publish_handoff.md`, and `CHANGES.md`.
+- Extended `scripts/macos/verify_sovereign_publish_ready.py` to require the
+  modding docs and example world-pack files before publish.
+
+Policy recorded:
+
+- Root engine code: GPLv3 with the Permafrost special linking exception.
+- Engine/editor/runtime API changes: root engine license.
+- `games/<pack_id>/` world/game packs: local pack license for original content,
+  such as MIT, CC-BY, or CC0.
+- Pack licenses do not relicense Permafrost-derived engine code.
+- Every pack must include `LICENSE`, `README.md`, and `world.json`.
+- No Microsoft, Ensemble, Age of Empires, or other proprietary assets without
+  clear redistribution rights.
 
 ## Remaining Plan Status
 

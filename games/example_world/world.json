@@ -1,0 +1,14 @@
+{
+  "id": "example_world",
+  "name": "Example World",
+  "version": "0.1.0",
+  "license": "MIT",
+  "entry": {
+    "scenario": null,
+    "script": null
+  },
+  "authors": [
+    "Sovereign Realms contributors"
+  ],
+  "description": "Placeholder pack showing the required world metadata and license boundary."
+}

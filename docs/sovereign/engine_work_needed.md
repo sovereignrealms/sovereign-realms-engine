@@ -19,7 +19,9 @@ The initial game package lives inside the engine fork:
 ```text
 scripts/sovereign/
 assets/sovereign/
+games/
 docs/sovereign/
+docs/modding/
 tools/asset_validation/
 ```
 
@@ -27,6 +29,13 @@ Engine code stays under GPLv3 with the existing special linking exception unless
 the upstream copyright holder grants a different license in writing. Original
 Sovereign Realms assets must carry their own source and license records. Do not
 import Microsoft, Ensemble Studios, or Age of Empires assets.
+
+The early repository intentionally keeps the engine and world/game packs
+together. Community packs live under `games/<pack_id>/` and must include their
+own `LICENSE`, `README.md`, and `world.json`. A pack may choose its own license
+for original maps, data, scripts, and assets, including MIT or Creative Commons
+licenses, as long as it does not copy or relicense Permafrost-derived engine
+code.
 
 ## Current Engine Baseline
 

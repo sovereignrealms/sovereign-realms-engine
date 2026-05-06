@@ -15,9 +15,18 @@ GPLv3 license with the existing special linking exception unless alternate
 licensing is granted by the upstream copyright holder.
 
 The active Sovereign scaffold lives under `scripts/sovereign/`,
-`assets/sovereign/`, `docs/sovereign/`, and `tools/asset_validation/`. See
-`docs/sovereign/engine_work_needed.md` for the staged implementation plan and
-`docs/sovereign/repo_license_structure.md` for the repository/license policy.
+`assets/sovereign/`, `docs/sovereign/`, `games/`, and
+`tools/asset_validation/`. See `docs/sovereign/engine_work_needed.md` for the
+staged implementation plan and `docs/sovereign/repo_license_structure.md` for
+the repository/license policy.
+
+The initial repository intentionally keeps the engine, editor, Sovereign game
+package, and early world-pack examples together. That keeps engine/API/editor
+fixes close to the first playable vertical slice while boundaries are still
+moving. Community worlds and game packs should live under `games/`, declare
+their own `LICENSE`, and avoid copying Permafrost-derived engine code into the
+pack. See `docs/modding/licensing_worlds.md` and
+`docs/modding/world_pack_format.md`.
 
 The intended organization repository is
 `sovereignrealms/sovereign-realms-engine`. Before publishing that fork, run:
