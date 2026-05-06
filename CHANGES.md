@@ -5,6 +5,8 @@
 - Documented the single-repo early development model: engine, editor,
   Sovereign game package, and world packs stay together until the first
   vertical slice stabilizes.
+- Replaced the upstream-first README with a Sovereign Realms README that keeps
+  upstream attribution but removes misleading personal license/contact language.
 - Added `games/` as the contribution boundary for independent world/game packs.
 - Added `docs/modding/` notes for world-pack format and per-pack licensing.
 - Added `games/example_world/` as a minimal MIT-licensed example pack.
