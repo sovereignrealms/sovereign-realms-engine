@@ -55,6 +55,22 @@ archive, or sibling checkout.
 6. Keep OpenGL as the reference backend until Metal parity and scale gates are
    repeatedly green.
 
+Current publish-preflight branch:
+
+```text
+codex/sovereign-publish-preflight
+```
+
+Current strict preflight status:
+
+```text
+SOVEREIGN_PUBLISH_READY_PASS fails=0 warnings=0 strict=1
+```
+
+The branch is ready for the organization push from a packaging hygiene
+perspective. GitHub repository creation/push permissions are the remaining
+operational step.
+
 Run the publish preflight before creating the organization push:
 
 ```sh
@@ -66,16 +82,12 @@ The non-strict run is useful during active development because it reports
 warnings without failing the shell. The strict run is the final gate before the
 Sovereign organization push.
 
-Current known publish blockers to resolve on the final publish branch:
+Resolved publish blockers:
 
-- `a.md` is a local investigation notebook and should not ship in the
-  organization repo history if the branch can avoid it.
-- Root/session `.pfsave` files are tracked in this working tree and should be
-  removed from the publish branch or moved into an intentional fixture location
-  with documentation.
-- The working tree is intentionally dirty while the active implementation
-  slices are still being assembled. Push only after reviewing and staging a
-  focused set of files.
+- `a.md` is no longer tracked by the publish-preflight branch.
+- Root/session `.pfsave` files are no longer tracked by the publish-preflight
+  branch.
+- The publish-preflight branch is clean and strict preflight passes.
 
 ## Local Migration Shape
 

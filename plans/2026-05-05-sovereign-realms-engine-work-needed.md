@@ -62,6 +62,9 @@ file records execution status as slices are completed and verified.
   house response, training, attack-readiness, and attack-order decisions.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, and handoff checklist.
+- Strict publish blocker cleanup: DONE on `codex/sovereign-publish-preflight`;
+  strict preflight reports `fails=0 warnings=0`.
+- GitHub organization push: PENDING.
 
 ## Completed Slice 1 — Repo/License And Package Bootstrap
 
@@ -2331,7 +2334,7 @@ Interpretation:
 Final publish-preflight commit:
 
 ```text
-76cf7de0 Prepare Sovereign Realms engine publish branch
+fee2015c Prepare Sovereign Realms engine publish branch
 ```
 
 Final strict verification:
@@ -2354,7 +2357,9 @@ Rough status against the ten-phase plan:
 
 - Phases 0-1: repo bootstrap and Metal baseline are functionally in place, but
   upstream PR hygiene remains separate from Sovereign organization packaging.
-  The Sovereign publish preflight/checklist is now in place.
+  The Sovereign publish preflight/checklist is now in place and strict publish
+  hygiene is green on `codex/sovereign-publish-preflight`. The organization
+  push remains pending.
 - Phases 2-3: asset pipeline seed and data-driven definitions are in place;
   real production art/validation depth remains.
 - Phases 4-7: economy, production/population, age/tech, combat counters,
@@ -2370,18 +2375,25 @@ Rough status against the ten-phase plan:
 - Phase 10: performance, Retina clarity, HD/4K assets, large-map benchmarks,
   and production polish remain the largest open area.
 
-Overall: the technical vertical-slice scaffold is roughly 73-77% complete for
+Overall: the technical vertical-slice scaffold is roughly 74-78% complete for
 an MVP skirmish foundation. It is not yet production-game-ready because real
 assets, deeper AI, full editor UX polish, scale/performance benchmarking,
 save/load of longer live orders, and HD/Retina presentation still need focused
 slices.
 
+Status by plan shape:
+
+- Latest execution slices: 29 completed slices are recorded.
+- Current-status checklist: all listed implementation items are marked DONE,
+  with only the actual GitHub organization push marked PENDING.
+- Ten-phase production roadmap: Phases 0-9 have MVP scaffolding/probes in
+  place; Phase 10 and production-quality content remain the largest open work.
+
 ## Next Slice
 
 The next clean target is either:
 
-- resolve strict publish blockers for `sovereign-realms-engine` by removing or
-  relocating tracked local notebooks/save artifacts on a focused publish branch,
-  or
+- push `codex/sovereign-publish-preflight` to
+  `sovereignrealms/sovereign-realms-engine`, or
 - continue gameplay depth with tactical AI/build-order planning after the
   packaging path is cleanly documented.

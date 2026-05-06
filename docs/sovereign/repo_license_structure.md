@@ -9,6 +9,18 @@ request remain easy to compare.
 Create `sovereignrealms/sovereign-realms-game` later, after the first skirmish
 vertical slice proves which game-package boundary is actually needed.
 
+Current decision snapshot:
+
+```text
+Engine repo name: sovereign-realms-engine
+Engine repo URL:  https://github.com/sovereignrealms/sovereign-realms-engine
+Later game repo:  https://github.com/sovereignrealms/sovereign-realms-game
+```
+
+The first repository is an engine fork plus the initial Sovereign game package.
+The second repository should wait until the vertical slice proves which content,
+asset, and release boundaries are actually useful.
+
 ## Engine Fork Layout
 
 ```text
@@ -35,6 +47,16 @@ folders, or temporary session saves as part of the public repository.
 
 The engine fork remains GPLv3 with the existing special linking exception until
 the upstream copyright holder grants different terms in writing.
+
+License files and notices:
+
+- `LICENSE.txt`: upstream Permafrost Engine GPLv3 plus special linking
+  exception.
+- `NOTICE.md`: Sovereign Realms fork notice, upstream attribution, and
+  alternate-license caveat.
+- `CHANGES.md`: dated Sovereign modification history.
+- `assets/sovereign/README.md`: original Sovereign asset/source/license
+  tracking policy.
 
 Rules for this fork:
 
