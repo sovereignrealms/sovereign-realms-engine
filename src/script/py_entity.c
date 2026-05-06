@@ -383,6 +383,7 @@ static int       PyCombatableEntity_set_corpse_model(PyCombatableEntityObject *s
 static int       PyCombatableEntity_set_projectile_fire_desc(PyCombatableEntityObject *self, PyObject *value, void *closure);
 static PyObject *PyCombatableEntity_hold_position(PyCombatableEntityObject *self);
 static PyObject *PyCombatableEntity_attack(PyCombatableEntityObject *self, PyObject *args);
+static PyObject *PyCombatableEntity_attack_entity(PyCombatableEntityObject *self, PyObject *args);
 static PyObject *PyCombatableEntity_pickle(PyCombatableEntityObject *self, PyObject *args, PyObject *kwargs);
 static PyObject *PyCombatableEntity_unpickle(PyObject *cls, PyObject *args, PyObject *kwargs);
 
@@ -394,6 +395,10 @@ static PyMethodDef PyCombatableEntity_methods[] = {
     {"attack", 
     (PyCFunction)PyCombatableEntity_attack, METH_VARARGS,
     "Issues an 'attack move' order to the entity at the XZ position specified by the argument."},
+
+    {"attack_entity",
+    (PyCFunction)PyCombatableEntity_attack_entity, METH_VARARGS,
+    "Issues an attack order against the specified combatable entity."},
 
     {"__del__", 
     (PyCFunction)PyCombatableEntity_del, METH_NOARGS,
@@ -2225,6 +2230,50 @@ static PyObject *PyCombatableEntity_attack(PyCombatableEntityObject *self, PyObj
         G_Move_SetDest(self->super.ent, xz_pos, true);
     }
 
+    Py_RETURN_NONE;
+}
+
+static PyObject *PyCombatableEntity_attack_entity(PyCombatableEntityObject *self, PyObject *args)
+{
+    PyObject *target;
+    if(!PyArg_ParseTuple(args, "O", &target)) {
+        PyErr_SetString(PyExc_TypeError, "Argument must be a combatable entity.");
+        return NULL;
+    }
+
+    if(G_FlagsGet(self->super.ent) & ENTITY_FLAG_ZOMBIE) {
+        PyErr_SetString(PyExc_RuntimeError, "Cannot call method on zombie entity.");
+        return NULL;
+    }
+
+    if(!PyObject_TypeCheck(target, &PyEntity_type)) {
+        PyErr_SetString(PyExc_TypeError, "Argument must be a combatable entity.");
+        return NULL;
+    }
+
+    PyObject *target_uid_obj = PyObject_GetAttrString(target, "uid");
+    if(!target_uid_obj)
+        return NULL;
+
+    long target_uid_long = PyInt_AsLong(target_uid_obj);
+    Py_DECREF(target_uid_obj);
+    if(PyErr_Occurred())
+        return NULL;
+
+    uint32_t target_uid = (uint32_t)target_uid_long;
+    if(!G_EntityExists(target_uid)) {
+        PyErr_SetString(PyExc_RuntimeError, "Target entity does not exist.");
+        return NULL;
+    }
+    if((G_FlagsGet(target_uid) & ENTITY_FLAG_ZOMBIE)
+    || !(G_FlagsGet(target_uid) & ENTITY_FLAG_COMBATABLE)) {
+        PyErr_SetString(PyExc_RuntimeError, "Target must be a live combatable entity.");
+        return NULL;
+    }
+
+    assert(G_FlagsGet(self->super.ent) & ENTITY_FLAG_COMBATABLE);
+    G_Combat_SetStance(self->super.ent, COMBAT_STANCE_AGGRESSIVE);
+    G_Combat_AttackUnit(self->super.ent, target_uid);
     Py_RETURN_NONE;
 }
 

@@ -41,6 +41,7 @@ import scene
 from math import cos, pi
 import traceback
 import sys
+import os
 
 import common.view_controllers.view_controller as vc
 import common.view_controllers.tab_bar_vc as tbvc
@@ -54,6 +55,16 @@ import common.views.video_settings_window as vsw
 import common.views.game_settings_window as gsw
 import common.views.perf_stats_window as psw
 import common.views.session_window as sw
+
+
+def _maybe_save_sovereign_scenario(map_path):
+    if os.environ.get("PF_EDITOR_SOVEREIGN_SCENARIO_EXPORT") != "1":
+        return None
+    from sovereign.editor_scenario import write_editor_scenario
+    sidecar_path, _scenario = write_editor_scenario(map_path)
+    print("EDITOR_SOVEREIGN_SCENARIO_SAVED {0}".format(sidecar_path))
+    sys.stdout.flush()
+    return sidecar_path
 
 class MenuVC(vc.ViewController):
 
@@ -127,6 +138,7 @@ class MenuVC(vc.ViewController):
             if event[1] is not None:
                 scene.save_scene(event[1])
                 globals.scene_filename = event[1]
+            _maybe_save_sovereign_scenario(event[0])
         except:
             globals.active_map.filename = old_filename
             print("Failed to save map/scene!")
@@ -151,6 +163,7 @@ class MenuVC(vc.ViewController):
             globals.active_map.write_to_file()
             if globals.scene_filename: 
                 scene.save_scene(globals.scene_filename)
+            _maybe_save_sovereign_scenario(globals.active_map.filename)
         except:
             print("Failed to save map/scene!")
             traceback.print_exc() 
@@ -216,4 +229,3 @@ class MenuVC(vc.ViewController):
         pf.unregister_event_handler(EVENT_MENU_SESSION_SHOW, MenuVC.__on_session_show)
         pf.unregister_event_handler(common.constants.EVENT_SESSION_SAVE_REQUESTED, MenuVC.__on_session_save)
         pf.unregister_event_handler(common.constants.EVENT_SESSION_LOAD_REQUESTED, MenuVC.__on_session_load)
-

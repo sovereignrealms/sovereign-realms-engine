@@ -2,6 +2,7 @@
 /dist/
 /lib/
 /obj/
+/qa-output/
 /launcher/obj/
 .DS_Store
 
@@ -19,9 +20,15 @@
 !/assets/sprites
 !/assets/music
 !/assets/sounds
+!/assets/sovereign
+!/assets/sovereign/**
 
 *.pyc
 *.pickle
+*.pfsave
+*.gputrace
+*.trace
+a.md
 tags
 visual_parity_captures/
 

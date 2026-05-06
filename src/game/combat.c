@@ -976,22 +976,20 @@ static void do_attack_unit(uint32_t uid, uint32_t target)
 
     do_stop_attack(uid);
     cs->stance = COMBAT_STANCE_AGGRESSIVE;
+    cs->sticky = true;
+    cs->target_uid = target;
+    cs->move_cmd_interrupted = false;
+
+    if(entity_can_attack(uid, target)) {
+        entity_turn_to_target(uid, target);
+        return;
+    }
 
     uint32_t flags = G_FlagsGetFrom(gs->flags, uid);
     if(flags & ENTITY_FLAG_MOVABLE) {
-    
-        cs->sticky = true;
-        cs->target_uid = target;
         cs->state = STATE_MOVING_TO_TARGET_LOCKED;
-        cs->move_cmd_interrupted = false;
-
         entity_move_in_range(uid, target);
 
-    }else if(entity_can_attack(uid, target)) {
-    
-        cs->sticky = true;
-        cs->target_uid = target;
-        cs->state = STATE_CAN_ATTACK;
     }
 }
 
@@ -1200,9 +1198,7 @@ static vec3_t projectile_spawn_pos(uint32_t uid)
             PFM_Mat4x4_Mult4x1(&pose_mat, &offset_homo, &bone_pos_homo);
             PFM_Mat4x4_Mult4x1(&model, &bone_pos_homo, &proj_pos);
         }else{
-            vec3_t center = Entity_CenterPos(uid);
-            PFM_Vec3_Add(&center, &fd->offset, &center);
-            vec4_t offset_homo = (vec4_t){center.x, center.y, center.z, 1.0f};
+            vec4_t offset_homo = (vec4_t){fd->offset.x, fd->offset.y, fd->offset.z, 1.0f};
             PFM_Mat4x4_Mult4x1(&model, &offset_homo, &proj_pos);
         }
     }

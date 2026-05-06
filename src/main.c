@@ -61,6 +61,7 @@
 
 #include <stdbool.h>
 #include <assert.h>
+#include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -128,6 +129,50 @@ static char                    **s_argv;
 /* STATIC FUNCTIONS                                                          */
 /*****************************************************************************/
 
+static void scale_sdl_mouse_event_to_drawable(SDL_Event *event)
+{
+    int winw, winh, draww, drawh;
+    float scalex, scaley;
+
+    if(!s_window)
+        return;
+
+    switch(event->type) {
+    case SDL_MOUSEBUTTONDOWN:
+    case SDL_MOUSEBUTTONUP:
+    case SDL_MOUSEMOTION:
+        break;
+    default:
+        return;
+    }
+
+    SDL_GetWindowSize(s_window, &winw, &winh);
+    Engine_WinDrawableSize(&draww, &drawh);
+    if(winw <= 0 || winh <= 0 || draww <= 0 || drawh <= 0)
+        return;
+
+    scalex = (float)draww / (float)winw;
+    scaley = (float)drawh / (float)winh;
+    if(scalex == 1.0f && scaley == 1.0f)
+        return;
+
+    switch(event->type) {
+    case SDL_MOUSEBUTTONDOWN:
+    case SDL_MOUSEBUTTONUP:
+        event->button.x = (int)roundf((float)event->button.x * scalex);
+        event->button.y = (int)roundf((float)event->button.y * scaley);
+        break;
+    case SDL_MOUSEMOTION:
+        event->motion.x = (int)roundf((float)event->motion.x * scalex);
+        event->motion.y = (int)roundf((float)event->motion.y * scaley);
+        event->motion.xrel = (int)roundf((float)event->motion.xrel * scalex);
+        event->motion.yrel = (int)roundf((float)event->motion.yrel * scaley);
+        break;
+    default:
+        break;
+    }
+}
+
 static void process_sdl_events(void)
 {
     PERF_ENTER();
@@ -140,6 +185,7 @@ static void process_sdl_events(void)
         if(vec_size(&s_prev_tick_events) == EVENT_VEC_SIZE)
             break;
 
+        scale_sdl_mouse_event_to_drawable(&event);
         UI_HandleEvent(&event);
         vec_event_push(&s_prev_tick_events, event);
 

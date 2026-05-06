@@ -256,6 +256,8 @@ static void ui_init_font_stash(struct nk_context *ctx)
 {
     const void *image; 
     int w, h;
+    const int font_oversample_h = 3;
+    const int font_oversample_v = 2;
 
     char fontdir[NK_MAX_PATH_LEN];
     pf_snprintf(fontdir, sizeof(fontdir), "%s/%s", g_basepath, "assets/fonts");
@@ -263,7 +265,10 @@ static void ui_init_font_stash(struct nk_context *ctx)
     nk_font_atlas_init_default(&s_atlas);
     nk_font_atlas_begin(&s_atlas);
 
-    s_atlas.default_font = nk_font_atlas_add_default(&s_atlas, 16, NULL);
+    struct nk_font_config default_config = nk_font_config(16);
+    default_config.oversample_h = font_oversample_h;
+    default_config.oversample_v = font_oversample_v;
+    s_atlas.default_font = nk_font_atlas_add_default(&s_atlas, 16, &default_config);
 
     int result;
     khiter_t k = kh_put(font, s_fontmap, pf_strdup("__default__"), &result);
@@ -271,7 +276,10 @@ static void ui_init_font_stash(struct nk_context *ctx)
     kh_value(s_fontmap, k) = s_atlas.default_font;
     s_active_font = kh_key(s_fontmap, k);
 
-    struct nk_font *default_large = nk_font_atlas_add_default(&s_atlas, 32, NULL);
+    struct nk_font_config default_large_config = nk_font_config(32);
+    default_large_config.oversample_h = font_oversample_h;
+    default_large_config.oversample_v = font_oversample_v;
+    struct nk_font *default_large = nk_font_atlas_add_default(&s_atlas, 32, &default_large_config);
     k = kh_put(font, s_fontmap, pf_strdup("__default__.32"), &result);
     assert(result != -1 && result != 0);
     kh_value(s_fontmap, k) = default_large;
@@ -318,8 +326,8 @@ static void ui_init_font_stash(struct nk_context *ctx)
 
             size_t font_size = font_sizes[fs];
             struct nk_font_config config = nk_font_config(font_size);
-            config.oversample_h = 1;
-            config.oversample_v = 1;
+            config.oversample_h = font_oversample_h;
+            config.oversample_v = font_oversample_v;
             config.range = glyph_ranges;
 
             struct nk_font *font = nk_font_atlas_add_from_file(&s_atlas, path, font_size, &config);
@@ -712,4 +720,3 @@ void UI_LoadingScreenTick(void)
     on_update_ui(NULL, NULL);
     ui_render((void*)(uintptr_t)UI_RENDER_MODE_LOADING_SCREEN, NULL);
 }
-

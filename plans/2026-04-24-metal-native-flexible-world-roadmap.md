@@ -37,13 +37,14 @@ Related current capability audit: [2026-04-30 macOS Metal capability equivalence
      OpenGL helper-object dependencies.
    - Retire OpenGL-only assumptions from build/config/runtime paths after the Metal renderer owns the required game and editor flows.
 4. `Metal-native HD/4K flexible-world graphics platform`
-   - Add the higher-fidelity rendering and content pipeline needed for HD/4K-ready worlds, larger maps, dense vegetation, richer buildings, careful combat effects, and character-level zooms.
+   - Add the higher-fidelity rendering and content pipeline needed for Retina-ready text/UI, HD/4K-ready characters and worlds, larger maps, dense vegetation, richer buildings, careful combat effects, and character-level zooms.
+   - Treat Retina readiness as a whole-engine clarity requirement: editor/runtime text, HUD/minimap, selection overlays, units, terrain, water, vegetation, buildings, particles, and screenshots should stay crisp on high-DPI Apple displays.
    - Preserve support for different worlds, rule systems, factions, art directions, and combat styles.
 
 ## Reference Guidance
 
 - Age of Empires II: Definitive Edition Enhanced Graphics Pack is a clarity/readability benchmark, not a clone target.
-  - Useful goals: sharper HD/4K assets, readable units at close zoom, large battlefield density, crisp terrain, strong building silhouettes, dense forests, and careful battlefield effects.
+  - Useful goals: Retina-crisp UI/text, sharper HD/4K assets, readable units at close zoom, large battlefield density, crisp terrain, strong building silhouettes, dense forests, and careful battlefield effects.
   - Pitfalls to avoid: input lag, fuzzy or soft visuals, over-smoothed motion that feels unnatural, difficult selection/click targets, and combat effects that lose fidelity.
 - openage is an extensibility and modding architecture reference, not an implementation to copy wholesale.
   - Useful ideas: data-driven content, asset conversion/modpack thinking, configurable unit behavior, scripting hooks, and separation between simulation, renderer, input/presenter, events, world updates, and networking.
@@ -62,7 +63,9 @@ Related current capability audit: [2026-04-30 macOS Metal capability equivalence
 
 ## HD/4K Graphics Platform Goals
 
-- At least HD output quality, with 4K-ready clarity as the long-term benchmark.
+- At least HD output quality, with Retina-ready and 4K-ready clarity as the long-term benchmark.
+- Retina-ready rendering across text, HUD/editor UI, minimap overlays, character/prop materials, terrain textures, water edges, vegetation cutouts, building details, particles, and screenshots.
+- Text clarity is first-class: avoid low-resolution font atlases, accidental 1920x1080-only UI assumptions, blurry scaling, and sampler/filter choices that soften readable UI on high-DPI displays.
 - Character-level zooms where units, banners, armor, weapons, animations, and health/combat feedback remain readable.
 - Wide zoom-out that shows large map areas, dense armies, forests, buildings, terrain variation, and battle state without collapsing into visual noise.
 - Better terrain richness: material blending, biome variation, road/cobble/grass/dirt transitions, cliffs, water edges, and large-map readability.
@@ -813,15 +816,89 @@ reverted independently. Working notebook: [a.md](../a.md).
     editor UI. The existing editor launch, feature, save, reload, and visual
     probes still pass on Metal after packaging.
 
+73. **Full packaged editor editing QA and hardening** — DONE (2026-05-02).
+    Added `scripts/macos/verify_editor_app_bundle.py` plus
+    `scripts/macos/build_editor_app_bundle.sh --verify-editing` to run the
+    self-contained `Permafrost Editor.app` through LaunchServices and verify
+    the packaged Metal editor feature audit, terrain/object edit-save workflow,
+    fresh reload, Terrain-tab screenshot, Objects-tab screenshot, and saved
+    map/scene validation. The verifier stages its own app-local `qa-output/`
+    files, checks the visual PNGs are nonblank, retries blank macOS window
+    captures with full-screen and display-specific fallbacks, and keeps the
+    visual probe from reporting ready until both screenshots plus save
+    validation complete.
+
+74. **Retina/high-DPI UI text clarity** — DONE (2026-05-02).
+    Enabled high-DPI SDL drawables for the Metal and OpenGL windows, scales
+    mouse events once into drawable coordinates before UI/game dispatch, and
+    restores high-quality Nuklear font atlas oversampling for default and TTF
+    fonts. Metal and OpenGL builds pass, the Metal launch probe still starts
+    cleanly, and packaged editor editing QA still passes with nonblank
+    3456x2234 Terrain/Objects visual captures. This is the first Retina text
+    hardening pass, not the later HD/4K asset/content uplift.
+
+75. **Runtime Retina UI readability probe** — DONE (2026-05-02).
+    Added `scripts/macos/pf_metal_runtime_ui_readability_probe.py` to capture
+    the Metal runtime HUD, Settings window, and Session window after the
+    high-DPI UI changes. The probe stages selected units, healthbars, minimap,
+    action controls, and fixed probe labels, then writes
+    `summary_runtime_ui_readability.json`. The latest run reports
+    `RUNTIME_UI_READABILITY_PASS backend=METAL captures=3 highdpi=1
+    window=1728x1117`; all three PNGs are nonblank at `3456x2234`. Source
+    inspection found the interactive Python console was still a Python 3
+    no-op at this point; item 76 closes that separate console restoration
+    follow-up.
+
+76. **Python 3 console/error-dialog Retina restoration** — DONE (2026-05-02).
+    Removed the Python 3 no-op console stub, restored the Nuklear console UI
+    on the UI update pass, added Python 3 stdout/stderr catcher modules with
+    `flush()` and original-stream teeing, and restored single-line plus
+    multiline console execution through Python 3 `codeop.compile_command`
+    with the engine `__main__` dictionary. The
+    runtime readability probe now captures HUD, Settings, Session, and Console
+    after activating the owning macOS window and rejecting blank screenshots.
+    Latest run: `RUNTIME_UI_READABILITY_PASS backend=METAL captures=4 highdpi=1
+    window=1728x1117`; all four PNGs are nonblank at `3456x2234`. A controlled
+    Python exception external screenshot also verifies the high-DPI unhandled
+    exception dialog. Latest follow-up verifier:
+    `PYTHON3_CONSOLE_TASK_FOLLOWUP_PASS console='PY_CONSOLE_SELFTEST_PASS multiline=1 total=3 len=3' task='METAL_TASK_PROBE_PASS backend=METAL steps=start,yield,sleep,event'`.
+
+77. **Close/wide Retina scene readability probe** — DONE (2026-05-02).
+    Added `scripts/macos/pf_metal_retina_scene_readability_probe.py` to capture
+    actual Metal world content at close character zoom, close terrain/prop zoom,
+    normal wide gameplay with fog-of-war, and a revealed wide-world overview.
+    Latest run: `RETINA_SCENE_READABILITY_PASS backend=METAL captures=4
+    highdpi=1 window=1728x1117`; all four PNGs are nonblank at `3456x2234`
+    with `retina_scale=[2.0, 2.0]`. This proves the scene renderer is using the
+    Retina drawable path too. It does not mark the HD/4K platform complete:
+    close characters/world props are crisp enough to inspect, but the current
+    stock assets remain visibly low-poly/low-detail, and the wide revealed
+    capture shows terrain repetition and sparse world-density limits that
+    belong to the post-port asset/LOD/content uplift.
+
+78. **HD/4K world readability target scaffold** — DONE (2026-05-02).
+    Added `scripts/macos/pf_metal_hd_world_readability_probe.py` plus
+    [2026-05-02 HD/4K world readability targets](2026-05-02-hd4k-world-readability-targets.md).
+    The probe stages a temporary close hero cluster, dense army, dense
+    forest/building/prop cluster, combat/VFX fixture area, and wide large-map
+    overview, then captures five Metal scenes at `3456x2234` from a
+    `1728x1117` high-DPI window. Latest run:
+    `HD_WORLD_READABILITY_PASS backend=METAL captures=5 highdpi=1 staged=108
+    sprite_sheets=fire_loop.png,impact_burst.png,projectile_trail.png,smoke_puff.png`.
+    This turns the HD/4K goal into a repeatable evidence harness. It still does
+    not mark HD/4K complete: the captures show current stock characters,
+    terrain, vegetation, buildings, and VFX fixtures are readable at Retina
+    scale, but final quality needs production assets, richer material/biome
+    variation, and zoom-aware LOD/readability rules.
+
 ## Current Status
 
-- Metal already verifies cold launch, startup UI, paired normal-gameplay smoke coverage, paired free-roam gameplay soak coverage, Apple Silicon editor launch, first editor feature-surface audit, editor terrain/object save plus fresh reload workflow, deterministic Terrain/Objects editor screenshots on the Metal runtime, Python 3 cooperative `pf.Task` scheduling plus the migrated Pong task sample, OpenAL music/global-effect/positional-effect smoke coverage, dense 64-unit GPU movement/crowd stress, core RTS resource/building/transport/automation/garrison smoke coverage, water/air pathing and water-transport edge behavior, navigation-layer formation movement and rank-to-column reshuffle coverage, dynamic blocker insertion/avoidance coverage, production automation variant coverage, larger mixed economy/combat scenario coverage, larger generated custom-world soak coverage with Metal session checkpoint restore, the Apple Silicon default runtime build, the first Metal/OpenGL link decoupling, the first swapchain-command decoupling, the frame command identity split, the view/projection/light command identity split, the screenspace/box helper command identity split, the low-risk debug command identity split, the selection/overlay command identity split, the loading-screen/healthbar command identity split, the skeleton/normals/model-preview command identity split, the core scene draw command identity split, the depth-pass command identity split, the map command identity split, the water command identity split, the minimap command identity split, the tile command identity split, the batch command identity split, the animation command identity split, the sprite command identity split, the UI command identity split, the Metal GL perf/query wrapper cleanup, the Metal mesh-init/skybox loader-root split, the Metal position/movement loader-root split, the Metal texture-loader root split, the native Metal world-sprite batch path, real sprite effect fixture/probe coverage for projectile trails/impacts/fire/smoke, gameplay-driven Mage projectile trail/impact coverage, terrain, real terrain textures, the first terrain patch-command/material-adjacency pass, the first terrain sampler/mipmap parity pass, the first terrain texture-array LOD-bias parity fix, the first terrain height-map normal/lighting parity pass, the first terrain splat blending parity pass, the first terrain-rich larger/custom-map fixture, the first custom-map minimap bake projection/map-state pass, minimap-hidden custom-map sampling, empty-skybox background coverage parity, basin water-edge/depression fixture coverage, normal-gameplay water/rocks skybox-reference parity, the first material texture-array mipmap pass for static props/rocks, the first mesh material UV parity fix for units and rocks/static props, the first static-prop winding/culling parity fix, the first high-specular static-prop normal/specular parity fix, the first mesh normal-transform parity fix, the first unlit screen-space statusbar/healthbar tone fix plus the tighter GL-style healthbar outline/fill parity fix, the first mesh shadow formula parity fix, the first terrain shadow coverage parity fix, the first terrain shadow Poisson Y parity fix, the first shadow-map Y-lookup and per-caster winding split, the first water/shore/fog parity foundation, the first water material/timing parity fix, the first water sampled-scene parity fix, the first offscreen water-scene color/tone fix, the first water final-color formula parity fix, static/skinned meshes, foliage cutouts, selection overlays, drag-box selection, terrain-conforming debug/vector overlays and debug primitives, healthbars, minimap fog-of-war HUD display, the first minimap dynamic water-update/scissor pass, map overlays, fog, water foundations, the first skybox command path with skybox-fed water reflections, main-frame skybox visual parity with the default Apple Silicon OpenGL skybox reference, skybox-fed water reflection scale parity, the first light-state/material-lighting parity slice, explicit MSAA parity state, ship-default 4x MSAA with parity-mode 1x captures, frame pacing, main-frame depth, shadow-map parity, lossless shadow-map diagnostics, deterministic fixed-time lighting phases, and the deterministic fixed-camera capture harness.
+- Metal already verifies cold launch, startup UI, paired normal-gameplay smoke coverage, paired free-roam gameplay soak coverage, Apple Silicon editor launch, first editor feature-surface audit, editor terrain/object save plus fresh reload workflow, deterministic Terrain/Objects editor screenshots on the Metal runtime, Python 3 cooperative `pf.Task` scheduling plus the migrated Pong task sample, Python 3 console multiline execution, OpenAL music/global-effect/positional-effect smoke coverage, dense 64-unit GPU movement/crowd stress, core RTS resource/building/transport/automation/garrison smoke coverage, water/air pathing and water-transport edge behavior, navigation-layer formation movement and rank-to-column reshuffle coverage, dynamic blocker insertion/avoidance coverage, production automation variant coverage, larger mixed economy/combat scenario coverage, larger generated custom-world soak coverage with Metal session checkpoint restore, the Apple Silicon default runtime build, the first Metal/OpenGL link decoupling, the first swapchain-command decoupling, the frame command identity split, the view/projection/light command identity split, the screenspace/box helper command identity split, the low-risk debug command identity split, the selection/overlay command identity split, the loading-screen/healthbar command identity split, the skeleton/normals/model-preview command identity split, the core scene draw command identity split, the depth-pass command identity split, the map command identity split, the water command identity split, the minimap command identity split, the tile command identity split, the batch command identity split, the animation command identity split, the sprite command identity split, the UI command identity split, the Metal GL perf/query wrapper cleanup, the Metal mesh-init/skybox loader-root split, the Metal position/movement loader-root split, the Metal texture-loader root split, the Metal asset-dump helper split, the native Metal world-sprite batch path, real sprite effect fixture/probe coverage for projectile trails/impacts/fire/smoke, gameplay-driven Mage projectile trail/impact coverage, terrain, real terrain textures, the first terrain patch-command/material-adjacency pass, the first terrain sampler/mipmap parity pass, the first terrain texture-array LOD-bias parity fix, the first terrain height-map normal/lighting parity pass, the first terrain splat blending parity pass, the first terrain-rich larger/custom-map fixture, the first custom-map minimap bake projection/map-state pass, minimap-hidden custom-map sampling, empty-skybox background coverage parity, basin water-edge/depression fixture coverage, normal-gameplay water/rocks skybox-reference parity, the first material texture-array mipmap pass for static props/rocks, the first mesh material UV parity fix for units and rocks/static props, the first static-prop winding/culling parity fix, the first high-specular static-prop normal/specular parity fix, the first mesh normal-transform parity fix, the first unlit screen-space statusbar/healthbar tone fix plus the tighter GL-style healthbar outline/fill parity fix, the first mesh shadow formula parity fix, the first terrain shadow coverage parity fix, the first terrain shadow Poisson Y parity fix, the first shadow-map Y-lookup and per-caster winding split, the first water/shore/fog parity foundation, the first water material/timing parity fix, the first water sampled-scene parity fix, the first offscreen water-scene color/tone fix, the first water final-color formula parity fix, static/skinned meshes, foliage cutouts, selection overlays, drag-box selection, terrain-conforming debug/vector overlays and debug primitives, healthbars, minimap fog-of-war HUD display, the first minimap dynamic water-update/scissor pass, map overlays, fog, water foundations, the first skybox command path with skybox-fed water reflections, main-frame skybox visual parity with the default Apple Silicon OpenGL skybox reference, skybox-fed water reflection scale parity, the first light-state/material-lighting parity slice, explicit MSAA parity state, ship-default 4x MSAA with parity-mode 1x captures, frame pacing, main-frame depth, shadow-map parity, lossless shadow-map diagnostics, deterministic fixed-time lighting phases, the deterministic fixed-camera capture harness, and the first HD/4K world readability target scaffold.
 - The fixed-camera Metal magenta main-scene blocker is fixed.
 - Still pending after the Apple Silicon Metal-default switch:
   - continue visual/smoothness regression checks against the OpenGL Apple Silicon baseline
   - polish any concrete remaining material/color residuals found by review
-  - deeper manual editor editing QA through the packaged app/window
-  - finish any remaining OpenGL helper-object dependency isolation
+  - retire remaining editor/diagnostic OpenGL-only assumptions as they are encountered
 
 ## Validation
 
@@ -891,12 +968,38 @@ reverted independently. Working notebook: [a.md](../a.md).
   and `visual_parity_captures/2026-05-01-large-world-soak-scale-opengl/`;
   repeated-loop 10x10 soak at `visual_parity_captures/2026-05-01-large-world-soak-loop-metal/`
   and `visual_parity_captures/2026-05-01-large-world-soak-loop-opengl/`.
-- Latest packaged editor app smoke: `make editor_app PLAT=MACOS_ARM64
+- Latest packaged editor app QA: `make editor_app PLAT=MACOS_ARM64
   MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL` stages a self-contained
   `dist/Permafrost Editor.app`; `scripts/macos/build_editor_app_bundle.sh
-  --skip-build --verify` reports `EDITOR_APP_LAUNCH_READY`, and Computer Use
-  sees the rendered `Permafrost Editor — org.permafrostengine.editor.dev`
-  window instead of a blank clear-color surface.
+  --skip-build --verify` reports `EDITOR_APP_LAUNCH_READY`; and
+  `PF_EDITOR_BUNDLE_ID=org.permafrostengine.editor.codexqa
+  scripts/macos/build_editor_app_bundle.sh --skip-build --bundle-dir
+  '/private/tmp/Permafrost Editor QA.app' --verify-editing` passes the packaged
+  Metal feature, edit/save, fresh reload, and visual Terrain/Objects screenshot
+  QA with `PACKAGED_EDITOR_QA_PASS`.
+- Latest Retina/high-DPI UI text hardening: Metal/OpenGL builds pass after
+  enabling `SDL_WINDOW_ALLOW_HIGHDPI`, scaling SDL mouse events into drawable
+  coordinates, and restoring higher Nuklear font atlas oversampling. The Metal
+  launch probe reports `NATIVE_LAUNCH_READY ... pf.render.backend=METAL`, and
+  the packaged editor QA still passes with nonblank 3456x2234 screenshots.
+- Latest runtime Retina UI readability artifact:
+  `visual_parity_captures/2026-05-02-runtime-ui-console-readability-metal-3/`.
+  It captures HUD, Settings, Session, and Console runtime UI at `3456x2234`
+  from a `1728x1117` window and reports `highdpi=1`.
+- Latest Python 3 console/error-dialog Retina evidence:
+  `visual_parity_captures/2026-05-02-python3-console-external.png` and
+  `visual_parity_captures/2026-05-02-python3-error-dialog-external.png`.
+- Latest close/wide Retina scene readability artifact:
+  `visual_parity_captures/2026-05-02-retina-scene-readability-metal/`.
+  It captures close characters, close world props, normal fogged wide gameplay,
+  and a revealed wide-world overview at `3456x2234` from a `1728x1117` Metal
+  window.
+- Latest HD/4K world readability target scaffold:
+  `visual_parity_captures/2026-05-02-hd-world-readability-metal/`.
+  It captures close hero characters, dense army readability, dense
+  forest/building readability, VFX combat readability, and wide large-map
+  readability at `3456x2234` from a `1728x1117` Metal window with
+  `retina_scale=[2.0, 2.0]` and 108 temporary staged entities.
 - Latest mesh shadow formula parity artifact: `visual_parity_captures/2026-04-24-metal-mesh-shadow-parity/`.
 - Latest terrain shadow coverage parity artifact: `visual_parity_captures/2026-04-24-metal-terrain-shadow-coverage/`.
 - Latest water/shore/fog parity artifact: `visual_parity_captures/2026-04-24-metal-water-fog-parity/`.
@@ -906,12 +1009,12 @@ reverted independently. Working notebook: [a.md](../a.md).
 - Latest water final-color formula parity artifact: `visual_parity_captures/2026-04-25-metal-water-final-color-parity/`.
 - Latest MGL migration-reference notes: `plans/2026-04-25-mgl-opengl-on-metal-notes.md`.
 - Latest direct debug-overlay probe: `scripts/macos/pf_metal_debug_overlay_probe.py` reports `METAL_DEBUG_OVERLAY_PASS backend=METAL render_frames=8 chunk_boundaries=1 flow_field=1 combat_targets=1`.
-- Add future capture scenarios for:
-  - close character-level zoom
-  - wide large-map zoom-out
-  - dense forests and vegetation
-  - dense army/battle scenes
+- Use the HD/4K world readability scaffold for future capture scenarios:
+  - production-quality dense forests and vegetation
+  - production-quality dense army/battle scenes
   - arrows, fire, smoke, impacts, and burning buildings
+  - HD/4K asset and LOD replacements for close character-level zoom and wide
+    large-map zoom-out
 - Do not mark the HD/4K platform complete from existing stock assets alone; it is a post-port graphics/content uplift.
 
 ## References

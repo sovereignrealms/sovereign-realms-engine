@@ -36,31 +36,12 @@
 #include "py_compat.h"
 #include "py_console.h"
 
-#if PY_MAJOR_VERSION >= 3
-
-bool S_Console_Init(void)
-{
-    return true;
-}
-
-void S_Console_Shutdown(void)
-{
-}
-
-void S_Console_Show(void)
-{
-}
-
-void S_Console_ToggleShown(void)
-{
-}
-
-#else
-
+#if PY_MAJOR_VERSION < 3
 #include <node.h>
 #include <grammar.h>
 #include <parsetok.h>
 #include <errcode.h>
+#endif
 
 #include "../ui.h"
 #include "../event.h"
@@ -71,11 +52,14 @@ void S_Console_ToggleShown(void)
 #include "../game/public/game.h"
 #include "../lib/public/pf_nuklear.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
+#if PY_MAJOR_VERSION < 3
 PyAPI_DATA(grammar) _PyParser_Grammar;
+#endif
 
 #define CONSOLE_HIST_SIZE (1024)
 #define MAX_LINES         (256)
@@ -109,6 +93,7 @@ LRU_CACHE_IMPL(static, hist, struct strbuff)
 
 static PyObject *PyPf_write_stdout(PyObject *self, PyObject *args);
 static PyObject *PyPf_write_stderr(PyObject *self, PyObject *args);
+static PyObject *PyPf_flush_stream(PyObject *self, PyObject *args);
 
 /*****************************************************************************/
 /* STATIC VARIABLES                                                          */
@@ -122,13 +107,33 @@ static vec_str_t s_multilines;
 
 static PyMethodDef stdout_catcher_methods[] = {
     {"write", PyPf_write_stdout, METH_VARARGS, "Write something to stdout."},
+    {"flush", PyPf_flush_stream, METH_NOARGS, "Flush the original stream."},
     {NULL, NULL, 0, NULL}
 };
 
 static PyMethodDef stderr_catcher_methods[] = {
     {"write", PyPf_write_stderr, METH_VARARGS, "Write something to stderr."},
+    {"flush", PyPf_flush_stream, METH_NOARGS, "Flush the original stream."},
     {NULL, NULL, 0, NULL}
 };
+
+#if PY_MAJOR_VERSION >= 3
+static struct PyModuleDef stdout_catcher_def = {
+    PyModuleDef_HEAD_INIT,
+    "stdout_catcher",
+    NULL,
+    -1,
+    stdout_catcher_methods,
+};
+
+static struct PyModuleDef stderr_catcher_def = {
+    PyModuleDef_HEAD_INIT,
+    "stderr_catcher",
+    NULL,
+    -1,
+    stderr_catcher_methods,
+};
+#endif
 
 /*****************************************************************************/
 /* STATIC FUNCTIONS                                                          */
@@ -173,6 +178,19 @@ static void write_str(const char *str, size_t idx)
     }
 }
 
+static void tee_to_original_stream(const char *str, size_t idx)
+{
+#if PY_MAJOR_VERSION >= 3
+    PyObject *stream = PySys_GetObject(idx == 0 ? "__stdout__" : "__stderr__"); /* borrowed */
+    if(stream && PyFile_WriteString(str, stream) != 0) {
+        PyErr_Clear();
+    }
+#else
+    (void)str;
+    (void)idx;
+#endif
+}
+
 static PyObject *PyPf_write_stdout(PyObject *self, PyObject *args)
 {
     const char *what;
@@ -181,6 +199,7 @@ static PyObject *PyPf_write_stdout(PyObject *self, PyObject *args)
     if(*what == '\0') {
         Py_RETURN_NONE; 
     }
+    tee_to_original_stream(what, 0);
     write_str(what, 0);
     Py_RETURN_NONE;
 }
@@ -193,10 +212,41 @@ static PyObject *PyPf_write_stderr(PyObject *self, PyObject *args)
     if(*what == '\0') {
         Py_RETURN_NONE; 
     }
+    tee_to_original_stream(what, 1);
     write_str(what, 1);
     Py_RETURN_NONE;
 }
 
+static PyObject *PyPf_flush_stream(PyObject *self, PyObject *args)
+{
+#if PY_MAJOR_VERSION >= 3
+    PyObject *stdout_stream = PySys_GetObject("__stdout__"); /* borrowed */
+    PyObject *stderr_stream = PySys_GetObject("__stderr__"); /* borrowed */
+    PyObject *ret;
+
+    if(stdout_stream) {
+        ret = PyObject_CallMethod(stdout_stream, "flush", NULL);
+        if(!ret) {
+            PyErr_Clear();
+        }
+        Py_XDECREF(ret);
+    }
+
+    if(stderr_stream) {
+        ret = PyObject_CallMethod(stderr_stream, "flush", NULL);
+        if(!ret) {
+            PyErr_Clear();
+        }
+        Py_XDECREF(ret);
+    }
+#else
+    (void)self;
+    (void)args;
+#endif
+    Py_RETURN_NONE;
+}
+
+#if PY_MAJOR_VERSION < 3
 static bool try_run_multiline(const char *next)
 {
     size_t tot_size = 0;
@@ -387,6 +437,165 @@ static void do_interactive_one(const char *str)
         PyRun_SimpleString(str);
     }
 }
+#else
+static char *build_source_py3(const char *next, bool append)
+{
+    size_t tot_size = strlen(next) + 2;
+    if(append) {
+        for(int i = 0; i < vec_size(&s_multilines); i++) {
+            const char *line = vec_AT(&s_multilines, i).line;
+            tot_size += strlen(line) + 1;
+        }
+    }
+
+    char *buff = malloc(tot_size);
+    if(!buff)
+        return NULL;
+
+    buff[0] = '\0';
+    if(append) {
+        for(int i = 0; i < vec_size(&s_multilines); i++) {
+            const char *line = vec_AT(&s_multilines, i).line;
+            pf_strlcat(buff, line, tot_size);
+            pf_strlcat(buff, "\n", tot_size);
+        }
+    }
+    pf_strlcat(buff, next, tot_size);
+    return buff;
+}
+
+static enum code_status try_compile_py3(const char *next, bool append,
+                                        PyObject **out_code)
+{
+    enum code_status ret = INVALID;
+    PyObject *codeop = NULL;
+    PyObject *compile_command = NULL;
+    PyObject *code = NULL;
+    char *source = build_source_py3(next, append);
+
+    *out_code = NULL;
+    if(!source)
+        return INVALID;
+
+    codeop = PyImport_ImportModule("codeop");
+    if(!codeop)
+        goto out;
+
+    compile_command = PyObject_GetAttrString(codeop, "compile_command");
+    if(!compile_command)
+        goto out;
+
+    code = PyObject_CallFunction(compile_command, "sss", source,
+        "<console>", "single");
+    if(!code)
+        goto out;
+
+    if(code == Py_None) {
+        Py_DECREF(code);
+        ret = NEEDS_MORE;
+        goto out;
+    }
+
+    *out_code = code;
+    ret = COMPLETE;
+
+out:
+    PF_FREE(source);
+    Py_XDECREF(compile_command);
+    Py_XDECREF(codeop);
+    return ret;
+}
+
+static void push_multiline_py3(const char *str)
+{
+    struct strbuff nextline;
+    pf_strlcpy(nextline.line, str, sizeof(nextline.line));
+    vec_str_push(&s_multilines, nextline);
+}
+
+static bool run_console_code_py3(PyObject *code)
+{
+    PyObject *main_module = PyImport_AddModule("__main__"); /* borrowed */
+    if(!main_module) {
+        PyErr_Print();
+        return false;
+    }
+
+    PyObject *global_dict = PyModule_GetDict(main_module); /* borrowed */
+    if(!global_dict) {
+        PyErr_Print();
+        return false;
+    }
+
+    PyObject *result = PyEval_EvalCode(code, global_dict, global_dict);
+    if(!result) {
+        PyErr_Print();
+        return false;
+    }
+    Py_DECREF(result);
+    return true;
+}
+
+static void do_interactive_one(const char *str)
+{
+    bool append = (vec_size(&s_multilines) > 0);
+    if(strlen(str) == 0 && !append)
+        return;
+
+    PyObject *code = NULL;
+    enum code_status status = try_compile_py3(str, append, &code);
+    switch(status) {
+    case COMPLETE:
+        run_console_code_py3(code);
+        Py_DECREF(code);
+        vec_str_reset(&s_multilines);
+        break;
+    case NEEDS_MORE:
+        push_multiline_py3(str);
+        break;
+    case INVALID:
+        vec_str_reset(&s_multilines);
+        PyErr_Print();
+        break;
+    }
+}
+
+static void run_console_selftest_py3(void)
+{
+    const char *path = getenv("PF_CONSOLE_SELFTEST_PATH");
+    if(!path || !*path)
+        return;
+
+    do_interactive_one("pf_console_multiline_probe = []");
+    do_interactive_one("for _i in range(3):");
+    do_interactive_one("    pf_console_multiline_probe.append(_i)");
+    do_interactive_one("");
+    do_interactive_one("pf_console_multiline_total = sum(pf_console_multiline_probe)");
+
+    bool pass = false;
+    PyObject *main_module = PyImport_AddModule("__main__"); /* borrowed */
+    PyObject *global_dict = main_module ? PyModule_GetDict(main_module) : NULL; /* borrowed */
+    PyObject *probe = global_dict ? PyDict_GetItemString(global_dict, "pf_console_multiline_probe") : NULL;
+    PyObject *total = global_dict ? PyDict_GetItemString(global_dict, "pf_console_multiline_total") : NULL;
+    long total_val = -1;
+    Py_ssize_t probe_len = -1;
+
+    if(probe && PyList_Check(probe))
+        probe_len = PyList_GET_SIZE(probe);
+    if(total && PyLong_Check(total))
+        total_val = PyLong_AsLong(total);
+    if(PyErr_Occurred())
+        PyErr_Clear();
+    pass = (probe_len == 3 && total_val == 3);
+
+    FILE *stream = fopen(path, "w");
+    if(stream) {
+        fprintf(stream, "PY_CONSOLE_SELFTEST_%s multiline=1 total=%ld len=%zd\n",
+            pass ? "PASS" : "FAIL", total_val, probe_len);
+        fclose(stream);
+    }
+}
+#endif
 
 static void on_update(void *user, void *event)
 {
@@ -521,7 +730,7 @@ bool S_Console_Init(void)
     s_next_lineid = 0;
     s_shown = false;
     memset(s_inputbuff, 0, sizeof(s_inputbuff));
-    E_Global_Register(EVENT_UPDATE_START, on_update, NULL, G_ALL);
+    E_Global_Register(EVENT_UPDATE_UI, on_update, NULL, G_ALL);
     E_Global_Register(SDL_KEYDOWN, on_keydown, NULL, G_ALL);
 
     vec_str_init(&s_multilines);
@@ -529,13 +738,21 @@ bool S_Console_Init(void)
     if(!lru_hist_init(&s_history, CONSOLE_HIST_SIZE, NULL))
         return false;
 
+#if PY_MAJOR_VERSION >= 3
+    PyObject *stdout_catcher = PyModule_Create(&stdout_catcher_def);
+#else
     PyObject *stdout_catcher = Py_InitModule("stdout_catcher", stdout_catcher_methods);
+#endif
     if(!stdout_catcher) {
         lru_hist_destroy(&s_history);
         return false;
     }
 
+#if PY_MAJOR_VERSION >= 3
+    PyObject *stderr_catcher = PyModule_Create(&stderr_catcher_def);
+#else
     PyObject *stderr_catcher = Py_InitModule("stderr_catcher", stderr_catcher_methods);
+#endif
     if(!stderr_catcher) {
         Py_DECREF(stdout_catcher);
         lru_hist_destroy(&s_history);
@@ -546,6 +763,9 @@ bool S_Console_Init(void)
     PySys_SetObject("stderr", stderr_catcher);
 
     print_welcome();
+#if PY_MAJOR_VERSION >= 3
+    run_console_selftest_py3();
+#endif
     return true;
 }
 
@@ -553,7 +773,7 @@ void S_Console_Shutdown(void)
 {
     vec_str_destroy(&s_multilines);
     lru_hist_destroy(&s_history);
-    E_Global_Unregister(EVENT_UPDATE_START, on_update);
+    E_Global_Unregister(EVENT_UPDATE_UI, on_update);
     E_Global_Unregister(SDL_KEYDOWN, on_keydown);
 }
 
@@ -566,5 +786,3 @@ void S_Console_ToggleShown(void)
 {
     s_shown = !s_shown;
 }
-
-#endif

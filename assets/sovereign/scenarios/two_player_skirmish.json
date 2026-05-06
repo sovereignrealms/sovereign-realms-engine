@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "id": "two_player_skirmish",
+  "name": "Two Player Skirmish",
+  "metadata": {
+    "author_notes": "Default Sovereign two-player skirmish fixture",
+    "map_seed": 20260505
+  },
+  "map": {
+    "path": "assets/maps",
+    "pfmap": "plain.pfmap"
+  },
+  "setup": {
+    "profile": "standard_skirmish",
+    "starting_resource_preset": "standard",
+    "victory_mode": "conquest"
+  },
+  "victory": {
+    "label": "Conquest",
+    "mode": "conquest"
+  },
+  "palette": {
+    "units": ["villager", "militia", "archer"],
+    "buildings": ["town_center", "house", "barracks"],
+    "resources": ["food", "wood", "gold", "stone"]
+  },
+  "placed_resources": [
+    {"id": "p1_food", "resource_id": "food", "owner_player_id": 0, "point": [58.0, 88.0], "amount": 300},
+    {"id": "p1_wood", "resource_id": "wood", "owner_player_id": 0, "point": [48.0, 70.0], "amount": 300},
+    {"id": "p1_gold", "resource_id": "gold", "owner_player_id": 0, "point": [84.0, 74.0], "amount": 300},
+    {"id": "p1_stone", "resource_id": "stone", "owner_player_id": 0, "point": [82.0, 92.0], "amount": 300}
+  ],
+  "placed_objects": [
+    {"id": "p1_guard", "kind": "unit", "object_id": "militia", "owner_player_id": 1, "point": [96.0, 90.0]},
+    {"id": "p2_forward_barracks", "kind": "building", "object_id": "barracks", "owner_player_id": 2, "point": [148.0, 86.0]}
+  ],
+  "players": [
+    {
+      "id": 1,
+      "name": "Sovereign",
+      "civilization_id": "sovereign_default",
+      "faction_color": [40, 90, 255, 255],
+      "start": [64.0, 72.0],
+      "starting_resources": {
+        "food": 260,
+        "wood": 240,
+        "gold": 140,
+        "stone": 100
+      }
+    },
+    {
+      "id": 2,
+      "name": "Opponent",
+      "civilization_id": "sovereign_default",
+      "faction_color": [220, 50, 50, 255],
+      "start": [120.0, 72.0],
+      "starting_resources": {
+        "food": 500,
+        "wood": 500,
+        "gold": 200,
+        "stone": 100
+      }
+    }
+  ],
+  "diplomacy": [
+    {"a": 1, "b": 2, "state": "war"}
+  ],
+  "export_report": {
+    "version": 1,
+    "scenario_id": "two_player_skirmish",
+    "map_seed": 20260505,
+    "victory_mode": "conquest",
+    "counts": {
+      "players": 2,
+      "resource_clusters": 4,
+      "placed_objects": 2,
+      "units": 1,
+      "buildings": 1,
+      "markers": 8,
+      "diplomacy_rows": 1,
+      "palette_units": 3,
+      "palette_buildings": 3,
+      "palette_resources": 4
+    },
+    "validation": {
+      "status": "ready",
+      "issue_count": 0,
+      "issues": []
+    }
+  }
+}

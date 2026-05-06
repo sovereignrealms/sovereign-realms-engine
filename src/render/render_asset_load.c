@@ -39,8 +39,10 @@
 #include "gl_vertex.h"
 #include "gl_material.h"
 #include "gl_render.h"
+#if PF_RENDER_BACKEND_OPENGL
 #include "gl_assert.h"
 #include "gl_shader.h"
+#endif
 
 #include "../main.h"
 #include "../perf.h"
@@ -291,7 +293,11 @@ void *R_AL_PrivFromStream(const char *base_path, const struct pfobj_hdr *header,
     for(int i = 0; i < header->num_materials; i++) {
 
         bool null;
+#if PF_RENDER_BACKEND_OPENGL
         priv->materials[i].texture.tunit = GL_TEXTURE0 + i;
+#else
+        priv->materials[i].texture.tunit = 0;
+#endif
         priv->materials[i].texture.id = -1;
         if(!al_read_material(stream, base_path, &priv->materials[i], &null)) 
             goto fail_parse;
@@ -333,9 +339,21 @@ fail_alloc_priv:
 void R_AL_DumpPrivate(FILE *stream, void *priv_data)
 {
     struct render_private *priv = priv_data;
+#if PF_RENDER_BACKEND_OPENGL
     glBindBuffer(GL_ARRAY_BUFFER, priv->mesh.VBO);
     struct vertex *vbuff = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
     assert(vbuff);
+    bool anim = strstr("animated", R_GL_Shader_GetName(priv->shader_prog)) != NULL;
+#else
+    struct vertex *vbuff = NULL;
+    bool anim = priv->metal_is_anim_mesh;
+    if(priv->metal_is_static_mesh) {
+        vbuff = priv->metal_static_verts;
+    }else if(priv->metal_is_anim_mesh) {
+        vbuff = priv->metal_anim_verts;
+    }
+    assert(vbuff);
+#endif
 
     /* Write verticies */
     for(int i = 0; i < priv->mesh.num_verts; i++) {
@@ -347,7 +365,7 @@ void R_AL_DumpPrivate(FILE *stream, void *priv_data)
         fprintf(stream, "vn %.6f %.6f %.6f\n", v->normal.x, v->normal.y, v->normal.z);
 
         fprintf(stream, "vw ");
-        if(strstr("animated", R_GL_Shader_GetName(priv->shader_prog))) {
+        if(anim) {
             for(int j = 0; j < 6; j++) {
 
                 struct anim_vert *av = (struct anim_vert*)v;
@@ -361,7 +379,9 @@ void R_AL_DumpPrivate(FILE *stream, void *priv_data)
         fprintf(stream, "vm %d\n", v->material_idx); 
     }
 
+#if PF_RENDER_BACKEND_OPENGL
     glUnmapBuffer(GL_ARRAY_BUFFER);
+#endif
 
     /* Write materials */
     for(int i = 0; i < priv->num_materials; i++) {

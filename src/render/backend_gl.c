@@ -649,7 +649,7 @@ const char *R_GL_Backend_GetInfo(enum render_info attr)
 
 Uint32 R_GL_Backend_WindowFlags(void)
 {
-    return SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
+    return SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
 }
 
 void R_GL_Backend_WindowDrawableSize(SDL_Window *window, int *out_w, int *out_h)

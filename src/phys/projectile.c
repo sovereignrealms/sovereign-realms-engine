@@ -217,6 +217,22 @@ static void phys_log_sprite_event(const char *event_name, const struct projectil
     fclose(fp);
 }
 
+static void phys_log_projectile_event(const char *event_name, const struct projectile *curr)
+{
+    const char *stats_path = getenv("PF_PROJECTILE_SPRITE_STATS_PATH");
+    if(!stats_path || !*stats_path || !event_name || !curr)
+        return;
+
+    FILE *fp = fopen(stats_path, "a");
+    if(!fp)
+        return;
+    fprintf(fp, "event=%s proj=%u parent=%u pos=%.3f,%.3f,%.3f vel=%.3f,%.3f,%.3f\n",
+        event_name, curr->uid, curr->ent_parent,
+        curr->pos.x, curr->pos.y, curr->pos.z,
+        curr->vel.x, curr->vel.y, curr->vel.z);
+    fclose(fp);
+}
+
 static void phys_filter_out_of_bounds(void)
 {
     for(int i = vec_size(&s_front)-1; i >= 0; i--) {
@@ -527,6 +543,7 @@ uint32_t P_Projectile_Add(vec3_t origin, vec3_t velocity, uint32_t ent_parent, i
     if(pd.flags & PROJ_HAS_TRAIL_SPRITE) {
         proj.trail_sprite.filename = si_intern(pd.trail_sprite.filename, &s_stringpool, s_stridx);
     }
+    phys_log_projectile_event("spawn", &proj);
     vec_proj_push(&s_added, proj);
     return ret;
 }

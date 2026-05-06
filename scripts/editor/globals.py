@@ -38,5 +38,5 @@ from constants import *
 
 active_map = map.Map(4, 4)
 active_objects_list = []
+scene_regions = []
 scene_filename = None
-

@@ -78,6 +78,7 @@
 
 #include <SDL.h>
 #include <mimalloc-stats.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -4465,9 +4466,25 @@ void S_ClearState(void)
 }
 
 #if PY_MAJOR_VERSION >= 3
+static const char *py3_session_globals_module_name(void)
+{
+    const char *module_name = getenv("PF_PY3_SESSION_GLOBALS_MODULE");
+    if(module_name && module_name[0])
+        return module_name;
+    return "rts.globals";
+}
+
+static const char *py3_session_restore_module_name(void)
+{
+    const char *module_name = getenv("PF_PY3_SESSION_RESTORE_MODULE");
+    if(module_name && module_name[0])
+        return module_name;
+    return "rts.main";
+}
+
 static PyObject *py3_scene_objects_for_save(void)
 {
-    PyObject *globals_mod = PyImport_ImportModule("rts.globals");
+    PyObject *globals_mod = PyImport_ImportModule(py3_session_globals_module_name());
     if(globals_mod) {
         PyObject *scene_objs = PyObject_GetAttrString(globals_mod, "scene_objs");
         Py_DECREF(globals_mod);
@@ -4483,7 +4500,7 @@ static PyObject *py3_scene_objects_for_save(void)
 
 static PyObject *py3_attr_from_globals_or_empty_list(const char *attr_name)
 {
-    PyObject *globals_mod = PyImport_ImportModule("rts.globals");
+    PyObject *globals_mod = PyImport_ImportModule(py3_session_globals_module_name());
     if(globals_mod) {
         PyObject *ret = PyObject_GetAttrString(globals_mod, attr_name);
         Py_DECREF(globals_mod);
@@ -4509,7 +4526,7 @@ static void py3_optional_import(const char *module_name)
 
 static void py3_assign_loaded_scene(PyObject *loaded, PyObject *regions, PyObject *cameras)
 {
-    PyObject *globals_mod = PyImport_ImportModule("rts.globals");
+    PyObject *globals_mod = PyImport_ImportModule(py3_session_globals_module_name());
     if(!globals_mod) {
         PyErr_Clear();
         return;
@@ -4530,7 +4547,7 @@ static void py3_assign_loaded_scene(PyObject *loaded, PyObject *regions, PyObjec
 static bool py3_restore_loaded_runtime(PyObject *loaded, PyObject *regions, PyObject *cameras)
 {
     bool ret = false;
-    PyObject *module = PyImport_ImportModule("rts.main");
+    PyObject *module = PyImport_ImportModule(py3_session_restore_module_name());
     PyObject *func = NULL;
     PyObject *result = NULL;
 
@@ -4564,7 +4581,7 @@ bool S_PostSessionLoad(void)
     PyObject *regions = NULL;
     PyObject *cameras = NULL;
 
-    globals_mod = PyImport_ImportModule("rts.globals");
+    globals_mod = PyImport_ImportModule(py3_session_globals_module_name());
     if(!globals_mod)
         goto done;
 
@@ -4730,6 +4747,7 @@ bool S_LoadState(SDL_RWops *stream)
     scene_buf[scene_size] = '\0';
 
     py3_optional_import("rts.units");
+    py3_optional_import(py3_session_restore_module_name());
 
     scene_stream = SDL_RWFromConstMem(scene_buf, scene_size);
     if(!scene_stream)

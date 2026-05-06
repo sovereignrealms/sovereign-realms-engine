@@ -1425,6 +1425,9 @@ BUILT-IN CLASSES
         Issues an 'attack move' order to the entity at the XZ position
         specified by the argument.
 
+        [attack_entity]
+        Issues an attack order against the specified combatable entity.
+
         [clear_icons]
         Clear the set of icons displayed over the entity.
 

@@ -6,6 +6,29 @@ Permafrost Engine is a Real Time Strategy game engine written in C, with an
 OpenGL 3.3 renderer and a native Metal renderer for macOS Apple Silicon.
 It is made in the image of old classics, but incorporating some modern ideas.
 
+## Sovereign Realms Fork Planning ##
+
+This fork is being prepared as the Metal-native foundation for Sovereign Realms,
+an AoE2-like RTS vertical slice and flexible world-building platform on macOS
+Apple Silicon. The current engine remains Permafrost-derived and keeps the
+GPLv3 license with the existing special linking exception unless alternate
+licensing is granted by the upstream copyright holder.
+
+The active Sovereign scaffold lives under `scripts/sovereign/`,
+`assets/sovereign/`, `docs/sovereign/`, and `tools/asset_validation/`. See
+`docs/sovereign/engine_work_needed.md` for the staged implementation plan and
+`docs/sovereign/repo_license_structure.md` for the repository/license policy.
+
+The intended organization repository is
+`sovereignrealms/sovereign-realms-engine`. Before publishing that fork, run:
+
+```sh
+python3 scripts/macos/verify_sovereign_publish_ready.py --strict
+```
+
+The publish preflight checks required license/planning files, local artifact
+ignore rules, generated-capture exclusions, and the Sovereign remote setup.
+
 ## Engine Showcase ##
 
 ![everglory-banner](docs/images/everglory-banner.png)

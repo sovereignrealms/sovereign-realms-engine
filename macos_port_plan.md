@@ -4,21 +4,21 @@
 
 - Status: `execution in progress`
 - Current milestone: `Phase 5 - Metal renderer transition`
-- Current milestone status: `in progress; the backend split is landed, the OpenGL fallback is preserved, and Metal now reaches startup UI, visible terrain, a first real terrain-texturing pass, a first terrain patch-command/material-adjacency pass, a first terrain sampler/mipmap parity pass, a first terrain texture-array LOD-bias parity fix, a first terrain height-map normal/lighting parity pass, a first real textured static/skinned-mesh pass, first world-selection overlays, drag-box UI selection, first terrain-conforming debug/vector overlays and debug primitives, first healthbars, a first unlit screen-space statusbar/healthbar tone fix, a first minimap render with terrain, unit dots, and camera-frustum overlay, a first translucent map-overlay-quads slice, a first scripted gameplay smoke pass, a first Session UI save/load roundtrip, a first depth-backed post-scene water-surface pass, a first Metal skybox command path with skybox-fed water reflections, a first Metal light-state/material-lighting parity slice, a first offscreen water-scene color/tone fix, a first Metal water final-color formula parity fix, a first static-prop winding/culling parity fix, a first mesh normal-transform parity fix for rocks/units, a deterministic fixed-camera OpenGL/Metal visual capture harness on Apple Silicon, and the fixed-camera Metal magenta main-scene blocker is fixed`
+- Current milestone status: `in progress; the backend split is landed, the OpenGL fallback is preserved, Metal is now the default Apple Silicon runtime build, and Metal now reaches startup UI, visible terrain, a first real terrain-texturing pass, a first terrain patch-command/material-adjacency pass, a first terrain sampler/mipmap parity pass, a first terrain texture-array LOD-bias fix, a first terrain height-map normal/lighting parity pass, a first terrain splat blending parity pass, a first terrain-rich larger/custom-map fixture, a first real textured static/skinned-mesh pass, first world-selection overlays, drag-box UI selection, first terrain-conforming debug/vector overlays and debug primitives, first healthbars, a first unlit screen-space statusbar/healthbar tone fix, a first minimap render with terrain, unit dots, camera-frustum overlay, fog-of-war HUD display, and dynamic water-update chunk scissor, a first translucent map-overlay-quads slice, paired normal-gameplay smoke and free-roam soak validation, a first Session UI save/load roundtrip, a first depth-backed post-scene water-surface pass, a first Metal skybox command path with skybox-fed water reflections, a first Metal light-state/material-lighting parity slice, a first offscreen water-scene color/tone fix, a first Metal water final-color formula parity fix, a first static-prop winding/culling parity fix, a first terrain shadow Poisson Y parity fix, a first mesh normal-transform parity fix for rocks/units, a deterministic fixed-camera OpenGL/Metal visual capture harness on Apple Silicon, Retina runtime UI/console/error-dialog readability, close/wide Retina scene readability, a first HD/4K world readability target scaffold, and the fixed-camera Metal magenta main-scene blocker is fixed`
 - Consolidated roadmap: [plans/2026-04-24-metal-native-flexible-world-roadmap.md](/Users/dev/Desktop/OpenGL%20RTS%20game%20engine/plans/2026-04-24-metal-native-flexible-world-roadmap.md)
 - Current scope for this workstream:
   1. keep the existing Permafrost RTS game solid on native Apple Silicon `arm64`
   2. align repo-tracked defaults/config with the verified Mac runtime
   3. add repeatable native validation for launch and Session roundtrips
   4. begin the backend-neutral renderer split and Metal bootstrap without regressing the stable OpenGL fallback
-  5. reach Metal visual and smoothness parity with the OpenGL Apple Silicon baseline before treating the Metal path as the new default
+  5. keep Metal visual and smoothness parity guarded by OpenGL Apple Silicon reference captures while the Metal path is the default Apple Silicon runtime
 
 ## Consolidated Metal-Native Roadmap
 
 - `Metal visual and smoothness parity` - match the OpenGL Apple Silicon baseline with fixed-camera captures before promoting Metal.
-- `Metal default` - make Metal the default Apple Silicon renderer after parity and smoke coverage are green.
-- `OpenGL removal` - remove temporary Metal dependence on linked OpenGL renderer symbols and retire OpenGL-only build/config/runtime assumptions after Metal owns the required runtime and editor flows.
-- `Metal-native HD/4K flexible-world graphics platform` - post-port graphics/content uplift for high-clarity HD/4K-ready worlds, character-level zooms, wide large-map zoom-out, dense vegetation/forests/buildings, and careful battle effects.
+- `Metal default` - completed for the Apple Silicon runtime build; `make pf/run PLAT=MACOS_ARM64` now defaults to Metal while `RENDER_BACKEND=OPENGL` remains the explicit reference path.
+- `OpenGL removal` - first direct link decoupling is complete for the Metal runtime binary; the shared render-command API has backend-neutral `R_Cmd_*` names; the UI command identity split, GL perf/query cleanup, asset texture-loader split, and asset-dump helper isolation are complete; the packaged Metal editor now verifies feature/edit/save/reload/visual QA. Next retire remaining editor/diagnostic OpenGL-only assumptions as they are encountered.
+- `Metal-native HD/4K flexible-world graphics platform` - post-port graphics/content uplift for Retina-ready text/UI, high-clarity HD/4K-ready characters/worlds, character-level zooms, wide large-map zoom-out, dense vegetation/forests/buildings, and careful battle effects. Current probes prove the Metal UI and scene paths are 2x Retina-scale, and the HD/4K world readability scaffold now captures close heroes, dense army, dense forest/building content, VFX combat, and wide large-map zoom-out; the remaining work is production asset quality, LOD/readability, terrain/biome richness, and world density.
 - The HD/4K graphics platform is an architecture guide and post-port milestone; it does not block the initial Metal replacement of OpenGL.
 - Age of Empires II: Definitive Edition Enhanced Graphics Pack is a clarity/readability benchmark only, while openage is an extensibility/modding architecture reference only.
 - MGL is an OpenGL-on-Metal internals reference only: useful for understanding how implicit OpenGL state becomes explicit Metal pipeline, encoder, binding, and render-pass state, but not a dependency target for the final native Metal renderer.
@@ -31,7 +31,7 @@
 - `Phase 3: Apple Silicon game polish` - `completed for the existing game`
 - `Phase 4: Python 3 cleanup beyond the existing game path` - `deferred unless it blocks the game`
 - `Phase 5: Metal renderer transition` - `in progress`
-- `Phase 5 quality milestone: Metal visual and smoothness parity with the OpenGL Apple Silicon baseline` - `in progress; magenta main-scene blocker cleared, first Metal skybox draw path landed, first engine light-state consumption landed, first terrain patch-command/material-adjacency path landed, first terrain sampler/mipmap parity path landed, first terrain texture-array LOD-bias parity fix landed, first terrain height-map normal/lighting parity path landed, first terrain shadow coverage parity fix landed, first water/shore/fog parity foundation landed, first water material/timing parity fix landed, first water sampled-scene parity fix landed, first offscreen water-scene color/tone fix landed, first water final-color formula parity fix landed, first water-with-units and rocks parity capture landed, first material texture-array mipmap pass landed for rocks/static props, first Metal mesh material UV parity fix landed, first Metal static-prop winding/culling parity fix landed, first Metal mesh normal-transform parity fix landed, first Metal mesh shadow formula parity fix landed, first Metal unlit screen-space statusbar/healthbar tone fix landed, deterministic fixed-camera capture placement landed, first terrain-conforming debug/vector and debug primitive command paths landed, remaining water shoreline/color response, broader scene color/material, skybox, and smoothness parity still pending`
+- `Phase 5 quality milestone: Metal visual and smoothness parity with the OpenGL Apple Silicon baseline` - `in progress; magenta main-scene blocker cleared, first Metal skybox draw path landed, first engine light-state consumption landed, first terrain patch-command/material-adjacency path landed, first terrain sampler/mipmap parity path landed, first terrain texture-array LOD-bias parity fix landed, first terrain height-map normal/lighting parity path landed, first terrain splat blending parity path landed, first terrain-rich larger/custom-map fixture landed, first custom-map minimap bake projection/map-state pass landed, minimap-hidden custom-map sampling landed, empty-skybox background coverage parity landed, basin water-edge/depression fixture coverage landed, first terrain shadow coverage parity fix landed, first terrain shadow Poisson Y parity fix landed, first water/shore/fog parity foundation landed, first water material/timing parity fix landed, first water sampled-scene parity fix landed, first offscreen water-scene color/tone fix landed, first water final-color formula parity fix landed, first water refraction shadow-state parity alignment landed, first broad terrain/material/water tone audit shows median luma parity, first high-specular static-prop normal/specular parity fix landed, first water-with-units and rocks parity capture landed, first material texture-array mipmap pass landed for rocks/static props, first Metal mesh material UV parity fix landed, first Metal static-prop winding/culling parity fix landed, first Metal mesh normal-transform parity fix landed, first Metal mesh shadow formula parity fix landed, first Metal unlit screen-space statusbar/healthbar tone fix landed, first minimap dynamic water-update/scissor pass landed, deterministic fixed-camera capture placement landed, first terrain-conforming debug/vector and debug primitive command paths landed, localized normal-gameplay water/rocks edge tone residuals closed, and ship-default 4x MSAA with parity-mode 1x capture gating landed`
 
 ## Current Apple Silicon Polish Scope
 
@@ -43,8 +43,8 @@
   - use the fixed-camera parity captures to close color, material, water, skybox, and frame-pacing differences before promoting Metal as the default
 - `Deferred but still tracked`
   - Rosetta `x86_64` lane remains blocked on `/usr/local` admin/toolchain issues
-  - macOS editor parity remains out of scope for the current game-polish phase
-  - `pf.Task` parity on Python 3 remains explicitly unsupported
+  - macOS editor parity is now covered by scripted packaged QA; deeper manual usability polish remains tracked
+  - old stackful `pf.Task` scripts remain unsupported on Python 3, but cooperative generator-style `pf.Task` is available and probed
   - the old `S_PickleObjgraph`-based pickler remains deferred behind the working native session replacement
   - Metal runtime playable-scene parity and editor parity are still pending beyond the current bootstrap slice
 
@@ -62,9 +62,9 @@
 - Moved the native build to `gnu11`-style strictness cleanup across engine/gameplay code that now compiles under Apple clang.
 - Started the Python 3.13 bridge migration far enough for the native arm64 build to move past the script layer and into core engine/render modules.
 - The native arm64 build now links and produces `bin/pf-arm64`.
-- The Python 3 path currently treats `pf.Task` as unsupported during bring-up instead of attempting a broken partial port of old CPython frame/thread-state internals.
-- The only concrete Python-side helper still depending on `pf.Task` for the live codebase was `scripts/common/disappearing_text_task.py`; on Python 3 it now uses a module-level `EVENT_UPDATE_START` handler instead of task fibers.
-- The deeper `src/script/py_task.c` fiber/task port remains deferred because the active RTS bring-up does not currently require engine-level `pf.Task` support.
+- The Python 3 path now supports cooperative generator-style `pf.Task` scripts through `yield self.yield_()`, `yield self.sleep(ms)`, and `yield self.await_event(event)`. The old stackful blocking `wait/send/receive/reply` model remains Python 2-only because it depends on removed CPython frame/thread-state internals.
+- The only concrete Python-side helper still depending on old stackful `pf.Task` for the live codebase was `scripts/common/disappearing_text_task.py`; on Python 3 it uses a module-level `EVENT_UPDATE_START` handler instead of task fibers.
+- The legacy Pong sample now has Python 3 generator-task branches and is covered by the task probes.
 - The Session window and RTS demo Session entry point are now re-enabled on Python 3 for the native path because the normal demo/UI save-load roundtrip is verified on Apple Silicon.
 - The first native replacement step is now in place: `scripts/editor/scene.py` exposes a reusable Python-3-safe `save_scene_from_objects()` helper that can snapshot live RTS entities into a PFSCENE file without using `S_PickleObjgraph`.
 - The native Python 3 session snapshot path now also preserves optional scene cameras and can re-wrap already-restored engine regions without colliding with `G_LoadGlobalState()`.
@@ -93,7 +93,7 @@
   - Makefile supports `RENDER_BACKEND=OPENGL` and `RENDER_BACKEND=METAL`
   - backend builds now use backend-specific object directories under `obj/`, so `OPENGL` and `METAL` no longer overwrite each other's compiled artifacts
   - `make run` and `make run_hfmp` now rebuild the selected backend before launching
-  - the default repo behavior remains `OPENGL`
+  - the default Apple Silicon repo behavior is now `METAL`; `RENDER_BACKEND=OPENGL` remains the explicit reference/fallback path
 - The render bootstrap is now split at the backend seam:
   - shared render settings, command/workspace management, and public renderer control wrappers remain in `src/render/render.c`
   - OpenGL bootstrap/context/present logic moved into `src/render/backend_gl.c`
@@ -172,7 +172,7 @@
 - `completed` `make -B obj/render/gl_texture.o obj/render/gl_ringbuffer.o obj/render/gl_terrain.o PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 EXTRA_FLAGS='-Wno-deprecated-non-prototype -Wno-unused-but-set-variable'` succeeds.
 - `completed` Native arm64 warning cleanup now covers typed vector comparators, SDL global-event registration signatures, and SDL window flag accumulation.
 - `completed` `make -B obj/event.o obj/cursor.o obj/cam_control.o obj/main.o obj/audio/al_audio.o obj/map/raycast.o obj/render/render.o obj/render/gl_batch.o obj/game/clearpath.o obj/game/game.o obj/game/region.o PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` now compiles through the prior `gnu11` warning blockers until it reaches the Python bridge.
-- `completed` `make -B obj/script/py_console.o PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` now succeeds because the interactive console is stubbed on Python 3.
+- `completed` `make -B obj/script/py_console.o PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` succeeds; the Python 3 console is no longer a no-op and now renders through the Nuklear console UI with stdout/stderr capture and single-line execution restored.
 - `completed` `make -B obj/script/py_pickle.o obj/script/py_script.o PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` succeeds with the Python 3 compatibility layer, module registration changes, modern `sys.argv` handling, weakref updates, and save/load disabled on Python 3.
 - `completed` `make -B obj/sched.o obj/context_switch.o PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` succeeds with the new Darwin arm64 scheduler backend and AArch64 context-switch trampolines.
 - `completed` `make -B obj/render/gl_image_quilt.o PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` succeeds after fixing macOS header portability in the render path.
@@ -402,7 +402,7 @@
   - `src/render/backend_metal.m` now routes `R_GL_MinimapBake`, `R_GL_MinimapRender`, and `R_GL_MinimapFree` through Metal instead of dropping the minimap entirely
   - the current slice is intentionally narrow: it bakes a top-down terrain texture, renders the rotated minimap diamond on-screen, routes `R_GL_MinimapRenderUnits` through Metal using the same normalized minimap-space dot sizing and transform as the OpenGL path, and now also draws the minimap camera-frustum overlay through the same CPU-side frustum math with explicit clipping in minimap-local `[-1, 1]` space before screen transform
   - the clean live screenshot for this slice is saved at `backups/2026-04-22-metal-fork-slice-11/pf_metal_minimap_frustum_live.png`
-  - the earlier off-minimap frustum leak is gone after the clipped Metal frustum path; fog/water integration and broader gameplay validation remain intentionally deferred for later Metal slices
+  - the earlier off-minimap frustum leak is gone after the clipped Metal frustum path; later parity work added final HUD fog-of-war masking and a minimap bake/update fog-clear audit so the baked texture is not pre-fogged before the final minimap display shader applies live fog
   - the stable OpenGL fallback was rebuilt and rechecked immediately afterward with `./bin/pf-arm64 ./ ./scripts/macos/pf_native_launch_probe.py`, which again reported `pf.render.backend=OPENGL`
 - `completed` The first Metal healthbar slice now also verifies on Apple Silicon:
   - `src/render/backend_metal.m` now routes `R_GL_DrawHealthbars` through Metal instead of dropping the gameplay healthbar overlay
@@ -573,10 +573,161 @@
   - `completed` match Metal water DUDV animation timing and water-surface alpha blending with the OpenGL water path
   - `completed` match the first Metal water reflection sampled-scene submission shape with OpenGL
   - `completed` suppress the temporary terrain-water overlay inside Metal's offscreen water-scene textures so final water composition does not sample pre-tinted helper water
-  - `completed` make Metal MSAA an explicit parity state: the default path now matches OpenGL's no-MSAA baseline, while `PF_METAL_MSAA_SAMPLES=2` or `4` keeps the smoother path available for controlled HD/4K-quality experiments
-  - close remaining water shoreline/color response, character mesh lighting, color, gamma, material, terrain, skybox, sampler/filtering, and frame-pacing differences before making Metal the default runtime path
-- `pending` Port the editor onto the Metal backend after the runtime scene is stable.
-- `pending` Remove the temporary Metal dependence on linked OpenGL renderer symbols once the draw-path migration is far enough along.
+  - `completed` make Metal MSAA an explicit parity state: the parity path matches OpenGL's no-MSAA baseline, while `PF_METAL_MSAA_SAMPLES=2` or `4` keeps the smoother path available for controlled HD/4K-quality experiments
+  - `completed` promote Metal's player-facing MSAA default back to 4x while preserving 1x capture parity:
+    - `METAL_DEFAULT_MSAA_SAMPLES` is now 4, `PF_PARITY_MODE=1` forces 1x, and `PF_METAL_MSAA_SAMPLES=1|2|4|8` remains the explicit override.
+    - `pf.get_render_info()` now reports `msaa_samples`, and the latest validation artifacts prove normal Metal smoke at 4x and parity-mode Metal/fixed-camera captures at 1x.
+  - `completed` close the localized high-specular static-prop material highlight residual with a narrow Metal specular-normal parity fix while keeping the water-stage foliage watch point stable
+  - `completed` close the localized rocks static-shadow composition residuals by flipping Metal terrain Poisson Y offsets to match the flipped shadow-map lookup
+  - `completed` add a first dynamic minimap water-update/scissor pass and guard the Metal tile-update path from an OpenGL-only assert
+  - `completed` add first terrain splat blending parity by mirroring OpenGL's procedural splat mask and base-material to accent-material table in Metal, with opt-in `PF_VISUAL_PARITY_SPLAT_PAIRS` capture support
+  - `completed` add the first terrain-rich larger/custom-map fixture:
+    - `scripts/macos/pf_terrain_custom_map_parity_probe.py` generates a deterministic 10x10 custom PFMAP with multi-biome materials, splats, a cliff/ridge, road/cobble transitions, a depressed basin, and a dynamic tile update.
+    - `scripts/macos/capture_terrain_custom_map_parity.sh` verifies matching OpenGL/Metal map metadata, tile-update metadata, and camera positions.
+    - the paired artifact is saved at `visual_parity_captures/2026-04-27-terrain-custom-map-final/`; stable terrain/splat/update controls are at 1.00, while the next target is localized depressed-basin/side-material parity.
+  - `completed` add the first custom-map minimap bake projection/map-state pass:
+    - Metal now uses explicit orthographic minimap projection, GL-to-Metal depth remap, current map uniforms, and refreshed water-mask state during full minimap bake and per-chunk update.
+    - the paired artifact is saved at `visual_parity_captures/2026-04-27-minimap-final/`; stable main-world terrain/splat/update controls remain at 1.00.
+  - `completed` add minimap-hidden/offscreen custom-map sampling:
+    - `PF_TERRAIN_CUSTOM_MAP_MINIMAP_MODE=default|hidden|offscreen` lets terrain/water captures exclude the HUD minimap when needed.
+    - the paired hidden-minimap artifact is saved at `visual_parity_captures/2026-04-27-terrain-hidden-minimap/`; old minimap-contaminated terrain samples are now exact parity.
+  - `completed` close empty-skybox background coverage:
+    - `G_SetSkybox("", "")` now frees the current skybox and skips the load command instead of letting Metal draw a black fallback cube over no-geometry pixels.
+    - the paired hidden-minimap artifact is saved at `visual_parity_captures/2026-04-27-empty-skybox-background-fix/`; previous empty/background samples now match OpenGL at 1.00.
+  - `completed` close replacement water-edge/depression camera placement:
+    - the custom-map fixture now keeps the original off-center basin and adds a smaller central basin that the fixed isometric camera can frame.
+    - the paired hidden-minimap artifact is saved at `visual_parity_captures/2026-04-27-basin-water-edge-final/`; sampled water-edge/depression, overview, ridge, and tile-update controls are all exact parity.
+  - `completed` close localized normal-gameplay water/rocks edge tone residuals:
+    - the residual was a parity-harness reference mismatch: Metal drew skybox-backed water reflections while OpenGL skybox drawing was disabled unless explicitly requested.
+    - `capture_visual_parity.sh` now defaults and exports `PF_VISUAL_PARITY_INCLUDE_SKYBOX=1`; the paired five-scene artifact is saved at `visual_parity_captures/2026-04-27-water-rocks-default-skybox-full-5scene/`.
+  - `completed` add first paired normal-gameplay smoke validation:
+    - `scripts/macos/capture_gameplay_smoke_parity.sh` runs the same camera, selection, movement, pause/resume, and attack sequence under OpenGL and Metal.
+    - the paired artifact is saved at `visual_parity_captures/2026-04-27-gameplay-smoke-parity/`; both backends passed all five gameplay checks.
+  - `completed` add first paired free-roam gameplay soak validation:
+    - `scripts/macos/capture_gameplay_soak_parity.sh` runs the same initial selection, four exploration waypoints, dynamic water-tile update, and final combat contact under OpenGL and Metal.
+    - the paired artifact is saved at `visual_parity_captures/2026-04-27-gameplay-soak-parity/`; both backends produced matching seven-record summaries.
+  - `completed` make Metal the default Apple Silicon runtime build while preserving OpenGL as the explicit reference:
+    - `make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` now selects `RENDER_BACKEND=METAL`.
+    - `make run PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1` now launches the Metal runtime path by default.
+    - `make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL` still builds and launches the OpenGL reference.
+  - `completed` remove the first direct OpenGL link dependency from the Metal build:
+    - Metal no longer compiles `src/render/backend_gl.c` or links `OpenGL.framework`.
+    - Default Metal launch still passes, and the explicit `RENDER_BACKEND=OPENGL` reference launch still passes.
+  - `completed` remove the first unnecessary OpenGL swapchain-command references from the Metal build:
+    - Metal no longer queues or drops `R_GL_SwapchainPresentLast` during the loading screen.
+    - Metal `render.o`, `loading_screen.o`, and `backend_metal.o` no longer reference `R_GL_SwapchainPresentLast` or `R_GL_SwapchainSetRes`.
+  - `completed` split the first render command identities from their OpenGL implementations:
+    - `R_GL_BeginFrame` and `R_GL_EndFrame` now live in shared render code as command IDs.
+    - OpenGL frame setup/completion moved to private `R_GL_BeginFrame_Impl` / `R_GL_EndFrame_Impl` functions dispatched by `backend_gl.c`.
+  - `completed` split view/projection/light-state command identities from their OpenGL implementations:
+    - `R_GL_SetViewMatAndPos`, `R_GL_SetProj`, `R_GL_SetAmbientLightColor`, `R_GL_SetLightEmitColor`, and `R_GL_SetLightPos` now live in shared render code as command IDs.
+    - OpenGL state updates moved to private `_Impl` functions dispatched by `backend_gl.c`.
+  - `completed` split the first debug/UI helper command identities from their OpenGL implementations:
+    - `R_GL_SetScreenspaceDrawMode` and `R_GL_DrawBox2D` now live in shared render code as command IDs.
+    - OpenGL helper execution moved to private `_Impl` functions, and OpenGL internal direct calls now use those `_Impl` functions.
+  - `completed` split the next low-risk debug command identities from their OpenGL implementations:
+    - `R_GL_DrawLine`, `R_GL_DrawQuad`, `R_GL_DrawOrigin`, `R_GL_DrawRay`, and `R_GL_DrawOBB` now live in shared render code as command IDs.
+    - OpenGL debug helper execution moved to private `_Impl` functions dispatched by `backend_gl.c`.
+  - `completed` split the selection/overlay command identities from their OpenGL implementations:
+    - `R_GL_DrawSelectionCircle`, `R_GL_DrawSelectionRectangle`, `R_GL_DrawMapOverlayQuads`, `R_GL_DrawFlowField`, and `R_GL_DrawCombinedHRVO` now live in shared render code as command IDs.
+    - OpenGL selection and overlay execution moved to private `_Impl` functions dispatched by `backend_gl.c`.
+  - `completed` split the loading-screen/healthbar command identities from their OpenGL implementations:
+    - `R_GL_DrawLoadingScreen` and `R_GL_DrawHealthbars` now live in shared render code as command IDs.
+    - OpenGL UI execution moved to private `_Impl` functions dispatched by `backend_gl.c`.
+  - `completed` split the skeleton/normals/model-preview command identities from their OpenGL implementations:
+    - `R_GL_DrawSkeleton`, `R_GL_DrawNormals`, and `R_GL_DrawModelToTexture` now live in shared render code as command IDs.
+    - OpenGL debug/model-preview execution moved to private `_Impl` functions dispatched by `backend_gl.c`.
+  - `completed` split the core scene draw command identity from its OpenGL implementation:
+    - `R_GL_Draw` now lives in shared render code as a command ID.
+    - OpenGL mesh draw execution moved to `R_GL_Draw_Impl`, and direct OpenGL helper calls in model-preview/minimap bake now target `_Impl`.
+  - `completed` split the depth-pass command identities from their OpenGL implementations:
+    - `R_GL_DepthPassBegin`, `R_GL_DepthPassEnd`, `R_GL_RenderDepthMap`, `R_GL_SetShadowsEnabled`, and `R_GL_Batch_RenderDepthMap` now live in shared render code as command IDs.
+    - OpenGL shadow/depth execution moved to private `_Impl` functions dispatched by `backend_gl.c`, and the paired visual harness passes across five OpenGL/Metal scenes.
+  - `completed` split the map command identities from their OpenGL implementations:
+    - `R_GL_MapInit`, `R_GL_MapShutdown`, `R_GL_MapBegin`, `R_GL_MapEnd`, `R_GL_MapUpdateFog`, and `R_GL_MapInvalidate` now live in shared render code as command IDs.
+    - OpenGL map execution moved to private `_Impl` functions dispatched by `backend_gl.c`, OpenGL minimap direct helper calls now target `_Impl`, and both the normal five-scene parity harness and custom four-scene terrain-map harness pass with matching cameras.
+  - `completed` split the water command identities from their OpenGL implementations:
+    - `R_GL_WaterInit`, `R_GL_WaterShutdown`, and `R_GL_DrawWater` now live in shared render code as command IDs.
+    - OpenGL water execution moved to private `_Impl` functions dispatched by `backend_gl.c`, OpenGL minimap water-texture baking now calls `_Impl`, and both the normal five-scene parity harness and custom four-scene terrain/water harness pass with matching cameras after non-persistent vsync-off capture hardening.
+  - `completed` split the minimap command identities from their OpenGL implementations:
+    - `R_GL_MinimapBake`, `R_GL_MinimapUpdateChunk`, `R_GL_MinimapRender`, `R_GL_MinimapRenderUnits`, and `R_GL_MinimapFree` now live in shared render code as command IDs.
+    - OpenGL minimap execution moved to private `_Impl` functions dispatched by `backend_gl.c`; normal visual parity, custom terrain/minimap parity, and the Metal minimap fog probe pass after the split.
+  - `completed` split the tile command identities from their OpenGL/shared implementation bodies:
+    - `R_GL_TileDrawSelected`, `R_GL_TileUpdate`, `R_GL_TilePatchVertsBlend`, and `R_GL_TilePatchVertsSmooth` now live in shared render code as command IDs.
+    - OpenGL selected-tile drawing moved to `_Impl`, tile update/adjacency patching moved to neutral `R_Tile*Impl` helpers shared by OpenGL and Metal, and normal plus custom terrain/tile-update parity harnesses pass.
+  - `completed` split the batch command identities from their OpenGL implementations:
+    - `R_GL_Batch_Draw`, `R_GL_Batch_DrawWithID`, `R_GL_Batch_RenderDepthMap`, `R_GL_Batch_Reset`, and `R_GL_Batch_AllocChunks` now live in shared render code as command IDs.
+    - OpenGL batch execution moved to private `_Impl` functions dispatched by `backend_gl.c`, Metal keeps its native batch draw/depth paths, and normal plus custom terrain/chunk parity harnesses pass.
+  - `completed` split the animation command identities from their OpenGL implementations:
+    - `R_GL_AnimAppendData` and `R_GL_AnimSetUniforms` now live in shared render code as command IDs.
+    - OpenGL pose-buffer upload/uniform execution moved to private `_Impl` functions dispatched by `backend_gl.c`, while Metal continues to consume `R_GL_AnimSetUniforms` as native animated-entity state.
+  - `completed` split the sprite command identity from its OpenGL implementation:
+    - `R_GL_SpriteRenderBatch` now lives in shared render code as a command ID.
+    - OpenGL world-sprite batch execution moved to `R_GL_SpriteRenderBatch_Impl` dispatched by `backend_gl.c`; Metal explicitly preserves the existing dropped-command behavior until a native sprite path is implemented.
+  - `completed` implement the first native Metal world-sprite batch path:
+    - Metal now handles `R_GL_SpriteRenderBatch` through a dedicated billboard pipeline, sprite-sheet texture cache, row/column frame sampling, and alpha discard matching the OpenGL sprite shader.
+    - `scripts/macos/pf_metal_sprite_probe.py` initially exercised the command/pipeline path with a dummy sprite before real sprite probe fixtures were added.
+  - `completed` add real sprite effect assets and Metal probe coverage:
+    - Added `assets/sprites/projectile_trail.png`, `impact_burst.png`, `fire_loop.png`, and `smoke_puff.png` as deterministic `1x4` RGBA probe fixtures.
+    - The Metal sprite probe now spawns all four effect classes and fails unless the native Metal renderer logs sheet draws through `PF_METAL_SPRITE_STATS_PATH`.
+  - `completed` add gameplay-driven projectile/fire/smoke effects coverage:
+    - The default Mage fireball descriptor now emits `projectile_trail.png` trail sprites and `impact_burst.png` impact sprites through the projectile system.
+    - `scripts/macos/pf_metal_gameplay_effects_probe.py` stages a Mage attack, proves trail/impact emission with `PF_PROJECTILE_SPRITE_STATS_PATH`, proves Metal rendering with `PF_METAL_SPRITE_STATS_PATH`, and captures a Metal screen artifact.
+  - `completed` split the UI command identities from their OpenGL implementations:
+    - `R_GL_UI_Init`, `R_GL_UI_Shutdown`, `R_GL_UI_Render`, and `R_GL_UI_UploadFontAtlas` now live in shared render code as command IDs.
+    - OpenGL UI execution moved to private `_Impl` functions dispatched by `backend_gl.c`, while Metal dispatches those same command IDs directly to native `R_Metal_UI_*` functions; both backend launch probes and the normal five-scene parity harness pass after the split.
+  - `completed` clean the first GL perf/query helper dependency out of the Metal build:
+    - `GL_PERF_*` debug timer-query/debug-group instrumentation is OpenGL-only, and `R_GL_TimestampForCookie` now guards its GL query readback path out of Metal builds.
+    - Current canonical Metal render objects no longer have undefined `pf_glGenQueries`, `pf_glQueryCounter`, `pf_glPushDebugGroup`, `pf_glPopDebugGroup`, `pf_glDeleteQueries`, or `pf_glGetQueryObject*` references; both backend launch probes and the normal five-scene parity harness pass.
+  - `completed` split the mesh-init and skybox loader roots out of the live Metal OpenGL helper surface:
+    - Metal macOS links now use `-Wl,-dead_strip`.
+    - `R_GL_Init`, `R_GL_SkyboxLoad`, `R_GL_DrawSkybox`, and `R_GL_SkyboxFree` are shared command IDs with OpenGL execution behind `_Impl` functions.
+    - `-why_live,_pf_glBindBuffer` no longer reports mesh init or skybox load as GL-loader roots; the remaining roots are the position/movement upload/readback paths.
+  - `completed` split the optional position/movement GPU upload/readback roots out of the live Metal OpenGL helper surface:
+    - `R_GL_PositionsUploadData`, `R_GL_PositionsInvalidateData`, and the `R_GL_Move*` GPU movement commands are shared command IDs with OpenGL execution behind `_Impl` functions.
+    - `-why_live,_pf_glBindBuffer` now emits no liveness chain, and the Metal binary no longer contains the GL buffer upload/readback symbols from that path.
+    - The next live GL-loader root is texture loading through `R_GL_Texture_GetOrLoad`.
+  - `completed` split the asset texture-loader root out of the live Metal OpenGL helper surface:
+    - `R_GL_Texture_GetOrLoad` is now a shared command ID with OpenGL execution behind `R_GL_Texture_GetOrLoad_Impl`.
+    - OpenGL-only loading-screen, sprite, and UI callers use the `_Impl` path directly.
+    - A stray audio state-restore `glGetError()` typo was corrected to `alGetError()`.
+    - The Metal binary now has no live `_pf_gl*` loader symbols and still does not link `OpenGL.framework`.
+  - `completed` rename the shared render-command API to backend-neutral command IDs:
+    - Shared command identities now use `R_Cmd_*` names.
+    - OpenGL execution remains explicitly owned by private `R_GL_*_Impl` functions and true OpenGL helpers keep their GL names.
+    - This left macOS editor launch as explicit follow-up work until the runtime PR was clean.
+    - Both backend launch probes, the five-scene visual parity harness, and Metal linkage/source-symbol checks pass.
+  - `completed` isolate the remaining shared asset-dump OpenGL helper dependency from Metal builds:
+    - `R_AL_DumpPrivate` now reads Metal static/animated vertex mirrors instead of mapping an OpenGL VBO when built for Metal.
+    - Metal material loading no longer needs `GL_TEXTURE0` for texture-unit bookkeeping.
+    - `scripts/macos/verify_metal_opengl_isolation.py` verifies that the Metal binary does not link `OpenGL.framework` and has no live global GL loader symbols.
+  - `completed` bring up the macOS Apple Silicon editor launch path on Metal:
+    - Python 3 `basestring` and float-rectangle startup blockers are fixed.
+    - `make run_editor PLAT=MACOS_ARM64` now launches the native editor path.
+    - `scripts/macos/pf_metal_editor_launch_probe.py` verifies
+      `EDITOR_LAUNCH_READY backend=METAL`.
+  - `completed` add and pass a first macOS Metal editor feature-surface audit:
+    - The audit drives Terrain, Objects, Diplomacy, Menu, Settings,
+      Performance, Session, and Load/Save As cancel flows.
+    - An animated placement-preview lifetime crash in Objects Select mode is
+      fixed by zombifying retired preview objects and holding a short reference
+      buffer until in-flight render workspaces drain.
+    - Direct Metal launch and `make run_editor PLAT=MACOS_ARM64` both verify
+      `EDITOR_FEATURE_AUDIT_READY backend=METAL`.
+  - `completed` revalidate the historical ASCII/tooling/perf feature surfaces:
+    - `scripts/macos/pf_macos_historical_features_probe.py` now verifies PFMap
+      serialization/import, PFScene serialization/import, session export,
+      representative static/animated PFOBJ structure, Blender exporter syntax,
+      PerfStatsWindow/perf APIs, and the Apple Silicon Wang-tileset fallback.
+    - Metal and OpenGL both pass the probe; full Blender-driven export, the
+      original Image Quilt generator, and native Metal GPU timestamp readback
+      remain non-blocking tooling/profiling follow-ups.
+  - close any remaining character mesh lighting, color/gamma/material, sampler/filtering, and editor/default-cleanup work after the Metal runtime default switch
+- `completed` Bring up editor startup on the Metal backend after the runtime scene is stable.
+- `completed` Add the first scripted editor feature-surface audit beyond startup.
+- `pending` Run full manual editor QA beyond the scripted feature-surface audit.
+- `completed` Rename the shared legacy `R_GL_*` render-command API to backend-neutral `R_Cmd_*` names after the first direct Metal/OpenGL link decoupling.
+- `completed` Continue isolating remaining Metal runtime OpenGL helper-object dependencies after the runtime PR branch is clean.
 - `completed` Implement `make deps PLAT=MACOS_X86_64`.
 - `completed` Implement `make deps PLAT=MACOS_ARM64`.
 - `partial` Implement `make pf PLAT=MACOS_X86_64`.
@@ -586,7 +737,7 @@
 - `completed` Verify the new macOS GL loader and renderer fallbacks at object-build level.
 - `completed` Clear the first native-arm64 `gnu11` warning wave that blocked renderer and game objects.
 - `completed` Start the Python 3.13 migration enough to keep the arm64 compile moving.
-  - The embedded console and custom pickler are stubbed on Python 3 where planned, and the core bridge now compiles far enough for the wider native build to proceed.
+  - The custom pickler was initially gated for Python 3 bring-up, but the embedded console has since been restored on Python 3 as a visible Nuklear UI with stdout/stderr capture and single-line execution.
 - `completed` Implement the first Darwin arm64 scheduler/context-switch backend and verify it compiles.
 - `completed` Link a full native `bin/pf-arm64` build on this Apple Silicon Mac.
 - `completed` Launch the native arm64 build and clear the first startup/runtime blockers through an early smoke run.
