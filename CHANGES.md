@@ -31,6 +31,8 @@
   checks can track pending masks while strict production checks fail until real
   texture masks exist.
 - Added asset-readability status to the HD/Retina readability proof summary.
+- Added the first real Sovereign team-color mask proof for the militia/Knight
+  placeholder and a unit-scoped strict readability validation path.
 
 ## 2026-05-07
 

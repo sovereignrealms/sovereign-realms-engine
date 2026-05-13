@@ -52,3 +52,8 @@ The preferred production team-color strategy is a texture mask stored beside
 the unit texture and referenced by the unit's `readability.team_color.mask`
 field. Current placeholder assets may use `pending_mask`, but that is not
 production-ready.
+
+The first proof mask is `assets/models/knight/Knight_team_mask.png`, used by
+the placeholder Sovereign `militia` entry. It covers the existing Knight
+texture's blue shield and cloth/paint regions and is meant as a pipeline proof,
+not final Sovereign infantry art.

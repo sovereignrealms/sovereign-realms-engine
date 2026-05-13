@@ -101,6 +101,12 @@ team-color-mask and far-view silhouette readiness. Normal mode allows current
 placeholder units to report pending masks; strict mode is the production gate
 once final unit art is expected.
 
+The first mask proof is in place for `militia` via
+`assets/models/knight/Knight_team_mask.png`. Use
+`tools/asset_validation/validate_sovereign_readability.py --unit militia --strict`
+as the single-unit gate while other placeholder units still report pending
+masks.
+
 ## Gameplay Data Architecture
 
 Keep gameplay rules in Python/data first:

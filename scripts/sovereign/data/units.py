@@ -53,10 +53,10 @@ UNITS = {
                 "minimum_pixels": 10,
             },
             "team_color": {
-                "mode": "pending_mask",
+                "mode": "texture_mask",
                 "mask": "Knight_team_mask.png",
                 "priority": "required",
-                "notes": "placeholder Knight texture; production infantry needs shield/cloth/team-paint mask",
+                "notes": "placeholder Knight texture mask covers blue shield and cloth paint regions",
             },
         },
         "armor_classes": ["infantry"],

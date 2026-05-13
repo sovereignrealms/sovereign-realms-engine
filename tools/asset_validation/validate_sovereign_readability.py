@@ -24,12 +24,32 @@ def main():
         default=_repo_root(),
         help="Repository root used to resolve asset paths.",
     )
+    parser.add_argument(
+        "--unit",
+        action="append",
+        default=[],
+        help="Validate only this unit id. May be passed more than once.",
+    )
     args = parser.parse_args()
 
     sys.path.insert(0, os.path.join(args.basedir, "scripts"))
+    from sovereign.data.units import UNITS
     from sovereign.data.readability import summarize_unit_readability
 
-    summary = summarize_unit_readability(basedir=args.basedir)
+    units = UNITS
+    if args.unit:
+        missing = sorted(set(args.unit) - set(UNITS))
+        if missing:
+            print(
+                "SOVEREIGN_READABILITY_ERROR unknown unit id(s): {0}".format(
+                    ", ".join(missing)
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        units = dict((unit_id, UNITS[unit_id]) for unit_id in sorted(set(args.unit)))
+
+    summary = summarize_unit_readability(units=units, basedir=args.basedir)
     for warning in summary["warnings"]:
         print("SOVEREIGN_READABILITY_WARNING {0}".format(warning), file=sys.stderr)
     for error in summary["errors"]:

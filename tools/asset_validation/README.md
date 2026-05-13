@@ -42,3 +42,9 @@ masks instead of pending placeholders:
 ```sh
 python3 tools/asset_validation/validate_sovereign_readability.py --strict
 ```
+
+For incremental asset work, scope strict validation to a single unit:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --unit militia --strict
+```

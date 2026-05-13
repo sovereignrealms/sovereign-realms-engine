@@ -1,4 +1,5 @@
 import os
+import struct
 
 from sovereign.data.units import UNITS
 
@@ -11,7 +12,55 @@ def _unit_asset_dir(unit, basedir):
     path = asset.get("path")
     if not path:
         return None
-    return os.path.dirname(os.path.join(basedir, path))
+    asset_path = os.path.join(basedir, path)
+    if asset.get("pfobj"):
+        return asset_path
+    return os.path.dirname(asset_path)
+
+
+def _unit_asset_path(unit, basedir):
+    asset = unit.get("asset") or {}
+    path = asset.get("path")
+    if not path:
+        return None
+    asset_path = os.path.join(basedir, path)
+    if asset.get("pfobj"):
+        return os.path.join(asset_path, asset["pfobj"])
+    return asset_path
+
+
+def _png_dimensions(path):
+    try:
+        with open(path, "rb") as infile:
+            header = infile.read(24)
+    except IOError:
+        return None
+    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        return None
+    return struct.unpack(">II", header[16:24])
+
+
+def _unit_texture_path(unit, basedir):
+    asset_path = _unit_asset_path(unit, basedir)
+    asset_dir = _unit_asset_dir(unit, basedir)
+    if not asset_path or not asset_dir:
+        return None
+    try:
+        with open(asset_path, "r") as infile:
+            for line in infile:
+                fields = line.strip().split()
+                if len(fields) >= 2 and fields[0] == "texture":
+                    return os.path.join(asset_dir, fields[1])
+    except IOError:
+        return None
+    return None
+
+
+def _unit_mask_dimensions(unit, basedir, mask):
+    asset_dir = _unit_asset_dir(unit, basedir)
+    if not asset_dir or not mask:
+        return None
+    return _png_dimensions(os.path.join(asset_dir, mask))
 
 
 def _validate_unit(unit_id, unit, basedir):
@@ -48,8 +97,22 @@ def _validate_unit(unit_id, unit, basedir):
         asset_dir = _unit_asset_dir(unit, basedir)
         if not mask:
             errors.append("unit '{0}' uses texture_mask without a mask path".format(unit_id))
-        elif asset_dir and not os.path.isfile(os.path.join(asset_dir, mask)):
-            errors.append("unit '{0}' missing team-color mask: {1}".format(unit_id, os.path.join(asset_dir, mask)))
+        elif asset_dir:
+            mask_path = os.path.join(asset_dir, mask)
+            if not os.path.isfile(mask_path):
+                errors.append("unit '{0}' missing team-color mask: {1}".format(unit_id, mask_path))
+            else:
+                mask_dims = _png_dimensions(mask_path)
+                texture_path = _unit_texture_path(unit, basedir)
+                texture_dims = _png_dimensions(texture_path) if texture_path else None
+                if not mask_dims:
+                    errors.append("unit '{0}' team-color mask is not a PNG: {1}".format(unit_id, mask_path))
+                elif texture_dims and mask_dims != texture_dims:
+                    errors.append(
+                        "unit '{0}' team-color mask size {1} does not match texture size {2}".format(
+                            unit_id, mask_dims, texture_dims
+                        )
+                    )
     elif mode == "pending_mask":
         warnings.append("unit '{0}' still needs production team-color mask".format(unit_id))
 
@@ -100,6 +163,9 @@ def summarize_unit_readability(units=None, basedir="."):
             "marker_policy": far_view.get("marker_policy"),
             "team_color_mode": mode,
             "team_color_mask": team_color.get("mask"),
+            "team_color_mask_size": _unit_mask_dimensions(
+                units[unit_id], basedir, team_color.get("mask")
+            ),
             "team_color_priority": team_color.get("priority"),
         }
     return {

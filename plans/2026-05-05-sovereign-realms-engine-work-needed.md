@@ -185,9 +185,11 @@ file records execution status as slices are completed and verified.
   wide zoom. A first asset-readability gate is also DONE: current Sovereign
   placeholder units now carry far-view silhouette, minimum-pixel, marker-policy,
   and team-color-mask metadata, and strict validation intentionally blocks
-  production readiness until real team-color masks exist. This is an evidence
-  baseline, not a claim that the stock placeholder assets are production HD/4K
-  quality.
+  production readiness until real team-color masks exist. A first one-unit
+  team-color-mask proof is also DONE for the militia/Knight placeholder:
+  `Knight_team_mask.png` validates at 512x512 and the scoped strict gate passes
+  for `militia`. This is an evidence baseline, not a claim that the stock
+  placeholder assets are production HD/4K quality.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
   first Sovereign organization checkpoint merge.
@@ -7859,3 +7861,109 @@ Conclusion:
 - Current placeholder units are explicitly marked as not production-ready for
   team-color readability. That is the intended state until real unit textures
   and masks replace the placeholder Knight/Mage/cart assets.
+
+## Completed Slice 89 — Militia Team-Color Mask Proof
+
+Goal:
+
+- Create the first real unit team-color mask proof without changing renderer
+  semantics or claiming the placeholder art is final.
+- Make strict validation useful for one unit at a time while the rest of the
+  placeholder pack still has pending masks.
+
+Implementation:
+
+- Added `assets/models/knight/Knight_team_mask.png`.
+  - source texture: `assets/models/knight/Knight.png`
+  - dimensions: 512x512
+  - binary mask coverage from existing blue shield and cloth/paint regions:
+    23,161 pixels, about 8.835% of the texture
+- Changed the Sovereign `militia` readability metadata from `pending_mask` to
+  `texture_mask`.
+- Extended `tools/asset_validation/validate_sovereign_readability.py` with
+  `--unit <id>` so a single asset can pass strict validation while other
+  placeholder units remain pending.
+- Hardened readability validation so texture masks are resolved correctly for
+  directory-style asset entries such as `{"path": "assets/models/knight",
+  "pfobj": "knight.pfobj"}`.
+- Added PNG dimension validation so a texture mask must match its source
+  PFOBJ texture size.
+- Updated asset/tooling docs and this plan with the incremental mask proof.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/sovereign/factory.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+```
+
+Normal pack gate:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=3 production_ready=1 pending_team_masks=2
+SOVEREIGN_READABILITY_WARNING unit 'archer' still needs production team-color mask
+SOVEREIGN_READABILITY_WARNING unit 'villager' still needs production team-color mask
+```
+
+Scoped strict proof:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --unit militia --strict
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=1 production_ready=1 pending_team_masks=0
+```
+
+Full strict pack gate still fails as intended:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_INVALID units=3 pending_team_masks=2
+```
+
+Runtime/proof checks:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_factory_probe.py \
+  --output-dir qa-output/sovereign-readability-mask-proof-factory
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-mask-proof \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_FACTORY_PROBE_PASS backend=METAL entities=10 units=3 buildings=3 resources=4
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=1
+asset_readability.pending_team_masks=2
+militia.team_color_mode=texture_mask
+militia.team_color_mask_size=[512, 512]
+```
+
+Conclusion:
+
+- The militia/Knight placeholder now has a concrete team-color mask asset and
+  passes the unit-scoped strict readability gate.
+- The whole pack remains correctly blocked by full strict validation until
+  the villager/cart and archer/Mage placeholder masks are replaced or completed.
