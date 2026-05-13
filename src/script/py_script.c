@@ -48,6 +48,8 @@
 #include "py_console.h"
 #include "public/script.h"
 #include "../entity.h"
+#include "../game/clearpath.h"
+#include "../game/movement.h"
 #include "../game/public/game.h"
 #include "../render/public/render.h"
 #include "../render/public/render_ctrl.h"
@@ -264,6 +266,8 @@ static PyObject *PyPf_attack_in_formation(PyObject *self, PyObject *args);
 static PyObject *PyPf_formation_preferred_for_set(PyObject *self, PyObject *args);
 static PyObject *PyPf_show_console(PyObject *self);
 static PyObject *PyPf_get_version_string(PyObject *self);
+static PyObject *PyPf_debug_write_clearpath_stats(PyObject *self);
+static PyObject *PyPf_debug_write_movement_stats(PyObject *self);
 
 static PyObject *PyPf_spawn_sprite_static(PyObject *self, PyObject *args);
 static PyObject *PyPf_spawn_sprite_animated(PyObject *self, PyObject *args);
@@ -927,6 +931,14 @@ static PyMethodDef pf_module_methods[] = {
     {"get_version_string",
     (PyCFunction)PyPf_get_version_string, METH_NOARGS,
     "Returns the version of Permafrost Engine."},
+
+    {"debug_write_clearpath_stats",
+    (PyCFunction)PyPf_debug_write_clearpath_stats, METH_NOARGS,
+    "Writes env-gated ClearPath diagnostic stats when PF_CLEARPATH_STATS_PATH is set."},
+
+    {"debug_write_movement_stats",
+    (PyCFunction)PyPf_debug_write_movement_stats, METH_NOARGS,
+    "Writes env-gated movement diagnostic stats when PF_MOVEMENT_STATS_PATH is set."},
 
     {"spawn_sprite_static",
     (PyCFunction)PyPf_spawn_sprite_static, METH_VARARGS,
@@ -3982,6 +3994,18 @@ static PyObject *PyPf_show_console(PyObject *self)
 static PyObject *PyPf_get_version_string(PyObject *self)
 {
     return PyString_FromString(g_version);
+}
+
+static PyObject *PyPf_debug_write_clearpath_stats(PyObject *self)
+{
+    G_ClearPath_WriteStats();
+    Py_RETURN_NONE;
+}
+
+static PyObject *PyPf_debug_write_movement_stats(PyObject *self)
+{
+    G_Move_WriteStats();
+    Py_RETURN_NONE;
 }
 
 static PyObject *PyPf_spawn_sprite_static(PyObject *self, PyObject *args)

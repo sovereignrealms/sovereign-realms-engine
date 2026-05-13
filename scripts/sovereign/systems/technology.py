@@ -73,6 +73,8 @@ class ResearchQueue(object):
         if effect_type == "set_age":
             self.player_state.current_age = effect["age"]
             return
+        if effect_type == "strategy_tag":
+            return
         raise TechnologyError("unsupported_effect", "{0} has unsupported effect {1}".format(technology_id, effect_type))
 
     def snapshot(self):

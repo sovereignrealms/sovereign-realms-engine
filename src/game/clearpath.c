@@ -59,11 +59,16 @@
 #include "../lib/public/mem.h"
 
 #include <assert.h>
+#include <SDL.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 
 #define EPSILON         (1.0/1024)
+#define EPSILON_SQ      (EPSILON * EPSILON)
 #define MAX_SAVED_VOS   (512)
 
 VEC_TYPE(vec2, vec2_t)
@@ -100,15 +105,279 @@ struct saved_ctx{
     bool          valid;
 };
 
+enum clearpath_timing_stage{
+    CLEARPATH_TIMING_CONSTRAINT_CAP,
+    CLEARPATH_TIMING_ATTEMPT_SETUP,
+    CLEARPATH_TIMING_DESIRED_PCR,
+    CLEARPATH_TIMING_INSIDE_PCR,
+    CLEARPATH_TIMING_XPOINTS,
+    CLEARPATH_TIMING_PROJECTION,
+    CLEARPATH_TIMING_COMPUTE_VNEW,
+    CLEARPATH_TIMING_FALLBACK_REMOVE,
+    CLEARPATH_TIMING_STAGE_COUNT
+};
+
+struct clearpath_stage_stats{
+    uint64_t count;
+    uint64_t total_us;
+    uint64_t max_us;
+};
+
+struct clearpath_stats{
+    bool enabled;
+    const char *path;
+
+    uint64_t calls;
+    uint64_t attempts;
+    uint64_t successes;
+    uint64_t zero_velocity_returns;
+    uint64_t fallback_retry_steps;
+    uint64_t fallback_removes;
+    uint64_t fallback_cap_returns;
+    uint64_t constraint_cap_attempts;
+    uint64_t constraint_cap_removes;
+    uint64_t constraint_cap_max_input_neighbours;
+
+    uint64_t dynamic_neighbours;
+    uint64_t static_neighbours;
+    uint64_t hrvos;
+    uint64_t vos;
+    uint64_t rays;
+    uint64_t max_rays;
+
+    uint64_t desired_outside_pcr;
+    uint64_t desired_inside_pcr;
+
+    uint64_t inside_pcr_calls;
+    uint64_t inside_pcr_ray_pair_tests;
+    uint64_t inside_pcr_hits;
+    uint64_t inside_pcr_misses;
+    uint64_t inside_pcr_apex_skips;
+
+    uint64_t xpoint_calls;
+    uint64_t xpoint_ray_pair_tests;
+    uint64_t xpoint_ray_pair_intersections;
+    uint64_t xpoint_inside_rejected;
+    uint64_t xpoint_accepted;
+
+    uint64_t projection_calls;
+    uint64_t projection_tests;
+    uint64_t projection_accepted;
+
+    uint64_t candidate_points_total;
+    uint64_t max_candidate_points;
+    uint64_t no_solution_attempts;
+    struct clearpath_stage_stats stages[CLEARPATH_TIMING_STAGE_COUNT];
+};
+
 /*****************************************************************************/
 /* STATIC VARIABLES                                                          */
 /*****************************************************************************/
 
 static struct saved_ctx s_debug_saved;
+static struct clearpath_stats s_clearpath_stats;
+static size_t s_fallback_remove_batch = 4;
+static size_t s_fallback_batch_min_neighbs = 40;
+static size_t s_fallback_max_removes;
+static size_t s_max_constraint_neighbs = 32;
+
+static const char *s_clearpath_stage_str[] = {
+    [CLEARPATH_TIMING_CONSTRAINT_CAP]   = "constraint_cap",
+    [CLEARPATH_TIMING_ATTEMPT_SETUP]    = "attempt_setup",
+    [CLEARPATH_TIMING_DESIRED_PCR]      = "desired_pcr",
+    [CLEARPATH_TIMING_INSIDE_PCR]       = "inside_pcr",
+    [CLEARPATH_TIMING_XPOINTS]          = "xpoints",
+    [CLEARPATH_TIMING_PROJECTION]       = "projection",
+    [CLEARPATH_TIMING_COMPUTE_VNEW]     = "compute_vnew",
+    [CLEARPATH_TIMING_FALLBACK_REMOVE]  = "fallback_remove"
+};
 
 /*****************************************************************************/
 /* STATIC FUNCTIONS                                                          */
 /*****************************************************************************/
+
+static size_t clearpath_parse_size_env(const char *name, size_t fallback)
+{
+    const char *value = getenv(name);
+    if(!value || !value[0])
+        return fallback;
+
+    char *end = NULL;
+    unsigned long parsed = strtoul(value, &end, 10);
+    if(end == value)
+        return fallback;
+
+    return (size_t)parsed;
+}
+
+static void clearpath_config_init(void)
+{
+    s_fallback_remove_batch = clearpath_parse_size_env(
+        "PF_CLEARPATH_FALLBACK_REMOVE_BATCH", 4);
+    if(s_fallback_remove_batch == 0)
+        s_fallback_remove_batch = 1;
+
+    s_fallback_batch_min_neighbs = clearpath_parse_size_env(
+        "PF_CLEARPATH_FALLBACK_BATCH_MIN_NEIGHBOURS", 40);
+    s_fallback_max_removes = clearpath_parse_size_env(
+        "PF_CLEARPATH_FALLBACK_MAX_REMOVES", 0);
+    s_max_constraint_neighbs = clearpath_parse_size_env(
+        "PF_CLEARPATH_MAX_CONSTRAINT_NEIGHBOURS", 32);
+}
+
+static inline void clearpath_stats_add_impl(uint64_t *field, uint64_t value)
+{
+    __sync_fetch_and_add(field, value);
+}
+
+static inline void clearpath_stats_max_impl(uint64_t *field, uint64_t value)
+{
+    uint64_t curr;
+    do{
+        curr = __sync_fetch_and_add(field, 0);
+        if(curr >= value)
+            return;
+    }while(!__sync_bool_compare_and_swap(field, curr, value));
+}
+
+#define clearpath_stats_add(field, value) \
+    do { \
+        uint64_t stats_value__ = (uint64_t)(value); \
+        if(s_clearpath_stats.enabled && stats_value__ != 0) \
+            clearpath_stats_add_impl((field), stats_value__); \
+    } while(0)
+
+#define clearpath_stats_max(field, value) \
+    do { \
+        if(s_clearpath_stats.enabled) \
+            clearpath_stats_max_impl((field), (uint64_t)(value)); \
+    } while(0)
+
+static double clearpath_stats_avg(uint64_t total, uint64_t count)
+{
+    return count ? (double)total / (double)count : 0.0;
+}
+
+static uint64_t clearpath_timing_begin(void)
+{
+    if(!s_clearpath_stats.enabled)
+        return 0;
+    return SDL_GetPerformanceCounter();
+}
+
+static uint64_t clearpath_timing_elapsed_us(uint64_t begin)
+{
+    uint64_t elapsed = SDL_GetPerformanceCounter() - begin;
+    uint64_t freq = SDL_GetPerformanceFrequency();
+    if(freq == 0)
+        return 0;
+    return (elapsed * 1000000ull) / freq;
+}
+
+static void clearpath_stats_timing(enum clearpath_timing_stage stage, uint64_t begin)
+{
+    if(!s_clearpath_stats.enabled || begin == 0)
+        return;
+
+    uint64_t elapsed_us = clearpath_timing_elapsed_us(begin);
+    struct clearpath_stage_stats *stats = &s_clearpath_stats.stages[stage];
+    clearpath_stats_add_impl(&stats->count, 1);
+    clearpath_stats_add_impl(&stats->total_us, elapsed_us);
+    clearpath_stats_max_impl(&stats->max_us, elapsed_us);
+}
+
+static void clearpath_stats_init(void)
+{
+    memset(&s_clearpath_stats, 0, sizeof(s_clearpath_stats));
+
+    const char *path = getenv("PF_CLEARPATH_STATS_PATH");
+    if(path && path[0]) {
+        s_clearpath_stats.enabled = true;
+        s_clearpath_stats.path = path;
+    }
+}
+
+static void clearpath_stats_write(void)
+{
+    if(!s_clearpath_stats.enabled || !s_clearpath_stats.path)
+        return;
+
+    FILE *fp = fopen(s_clearpath_stats.path, "w");
+    if(!fp) {
+        fprintf(stderr, "PF_CLEARPATH_STATS_PATH failed to open: %s\n",
+            s_clearpath_stats.path);
+        return;
+    }
+
+    fprintf(fp, "{\n");
+    fprintf(fp, "  \"calls\": %llu,\n", (unsigned long long)s_clearpath_stats.calls);
+    fprintf(fp, "  \"attempts\": %llu,\n", (unsigned long long)s_clearpath_stats.attempts);
+    fprintf(fp, "  \"successes\": %llu,\n", (unsigned long long)s_clearpath_stats.successes);
+    fprintf(fp, "  \"zero_velocity_returns\": %llu,\n", (unsigned long long)s_clearpath_stats.zero_velocity_returns);
+    fprintf(fp, "  \"fallback_remove_batch\": %llu,\n", (unsigned long long)s_fallback_remove_batch);
+    fprintf(fp, "  \"fallback_batch_min_neighbours\": %llu,\n", (unsigned long long)s_fallback_batch_min_neighbs);
+    fprintf(fp, "  \"fallback_max_removes\": %llu,\n", (unsigned long long)s_fallback_max_removes);
+    fprintf(fp, "  \"max_constraint_neighbours\": %llu,\n", (unsigned long long)s_max_constraint_neighbs);
+    fprintf(fp, "  \"fallback_retry_steps\": %llu,\n", (unsigned long long)s_clearpath_stats.fallback_retry_steps);
+    fprintf(fp, "  \"fallback_removes\": %llu,\n", (unsigned long long)s_clearpath_stats.fallback_removes);
+    fprintf(fp, "  \"fallback_cap_returns\": %llu,\n", (unsigned long long)s_clearpath_stats.fallback_cap_returns);
+    fprintf(fp, "  \"constraint_cap_attempts\": %llu,\n", (unsigned long long)s_clearpath_stats.constraint_cap_attempts);
+    fprintf(fp, "  \"constraint_cap_removes\": %llu,\n", (unsigned long long)s_clearpath_stats.constraint_cap_removes);
+    fprintf(fp, "  \"constraint_cap_max_input_neighbours\": %llu,\n", (unsigned long long)s_clearpath_stats.constraint_cap_max_input_neighbours);
+    fprintf(fp, "  \"dynamic_neighbours\": %llu,\n", (unsigned long long)s_clearpath_stats.dynamic_neighbours);
+    fprintf(fp, "  \"static_neighbours\": %llu,\n", (unsigned long long)s_clearpath_stats.static_neighbours);
+    fprintf(fp, "  \"hrvos\": %llu,\n", (unsigned long long)s_clearpath_stats.hrvos);
+    fprintf(fp, "  \"vos\": %llu,\n", (unsigned long long)s_clearpath_stats.vos);
+    fprintf(fp, "  \"rays\": %llu,\n", (unsigned long long)s_clearpath_stats.rays);
+    fprintf(fp, "  \"max_rays\": %llu,\n", (unsigned long long)s_clearpath_stats.max_rays);
+    fprintf(fp, "  \"desired_outside_pcr\": %llu,\n", (unsigned long long)s_clearpath_stats.desired_outside_pcr);
+    fprintf(fp, "  \"desired_inside_pcr\": %llu,\n", (unsigned long long)s_clearpath_stats.desired_inside_pcr);
+    fprintf(fp, "  \"inside_pcr_calls\": %llu,\n", (unsigned long long)s_clearpath_stats.inside_pcr_calls);
+    fprintf(fp, "  \"inside_pcr_ray_pair_tests\": %llu,\n", (unsigned long long)s_clearpath_stats.inside_pcr_ray_pair_tests);
+    fprintf(fp, "  \"inside_pcr_hits\": %llu,\n", (unsigned long long)s_clearpath_stats.inside_pcr_hits);
+    fprintf(fp, "  \"inside_pcr_misses\": %llu,\n", (unsigned long long)s_clearpath_stats.inside_pcr_misses);
+    fprintf(fp, "  \"inside_pcr_apex_skips\": %llu,\n", (unsigned long long)s_clearpath_stats.inside_pcr_apex_skips);
+    fprintf(fp, "  \"xpoint_calls\": %llu,\n", (unsigned long long)s_clearpath_stats.xpoint_calls);
+    fprintf(fp, "  \"xpoint_ray_pair_tests\": %llu,\n", (unsigned long long)s_clearpath_stats.xpoint_ray_pair_tests);
+    fprintf(fp, "  \"xpoint_ray_pair_intersections\": %llu,\n", (unsigned long long)s_clearpath_stats.xpoint_ray_pair_intersections);
+    fprintf(fp, "  \"xpoint_inside_rejected\": %llu,\n", (unsigned long long)s_clearpath_stats.xpoint_inside_rejected);
+    fprintf(fp, "  \"xpoint_accepted\": %llu,\n", (unsigned long long)s_clearpath_stats.xpoint_accepted);
+    fprintf(fp, "  \"projection_calls\": %llu,\n", (unsigned long long)s_clearpath_stats.projection_calls);
+    fprintf(fp, "  \"projection_tests\": %llu,\n", (unsigned long long)s_clearpath_stats.projection_tests);
+    fprintf(fp, "  \"projection_accepted\": %llu,\n", (unsigned long long)s_clearpath_stats.projection_accepted);
+    fprintf(fp, "  \"candidate_points_total\": %llu,\n", (unsigned long long)s_clearpath_stats.candidate_points_total);
+    fprintf(fp, "  \"max_candidate_points\": %llu,\n", (unsigned long long)s_clearpath_stats.max_candidate_points);
+    fprintf(fp, "  \"no_solution_attempts\": %llu,\n", (unsigned long long)s_clearpath_stats.no_solution_attempts);
+    fprintf(fp, "  \"stage_timings\": {\n");
+    for(int i = 0; i < CLEARPATH_TIMING_STAGE_COUNT; i++) {
+        struct clearpath_stage_stats *stats = &s_clearpath_stats.stages[i];
+        double avg_ms = (stats->count > 0)
+            ? ((double)stats->total_us / 1000.0) / (double)stats->count
+            : 0.0;
+        fprintf(fp, "    \"%s\": {\n", s_clearpath_stage_str[i]);
+        fprintf(fp, "      \"count\": %llu,\n", (unsigned long long)stats->count);
+        fprintf(fp, "      \"total_ms\": %.6f,\n", (double)stats->total_us / 1000.0);
+        fprintf(fp, "      \"avg_ms\": %.6f,\n", avg_ms);
+        fprintf(fp, "      \"max_ms\": %.6f\n", (double)stats->max_us / 1000.0);
+        fprintf(fp, "    }%s\n", (i == CLEARPATH_TIMING_STAGE_COUNT - 1) ? "" : ",");
+    }
+    fprintf(fp, "  },\n");
+    fprintf(fp, "  \"avg_rays_per_attempt\": %.6f,\n",
+        clearpath_stats_avg(s_clearpath_stats.rays, s_clearpath_stats.attempts));
+    fprintf(fp, "  \"avg_inside_pair_tests_per_call\": %.6f,\n",
+        clearpath_stats_avg(s_clearpath_stats.inside_pcr_ray_pair_tests,
+            s_clearpath_stats.inside_pcr_calls));
+    fprintf(fp, "  \"avg_xpoint_pair_tests_per_call\": %.6f,\n",
+        clearpath_stats_avg(s_clearpath_stats.xpoint_ray_pair_tests,
+            s_clearpath_stats.xpoint_calls));
+    fprintf(fp, "  \"avg_candidates_per_attempt\": %.6f\n",
+        clearpath_stats_avg(s_clearpath_stats.candidate_points_total,
+            s_clearpath_stats.attempts));
+    fprintf(fp, "}\n");
+    fclose(fp);
+
+    fprintf(stderr, "PF_CLEARPATH_STATS wrote %s\n", s_clearpath_stats.path);
+}
 
 static bool same_position(vec2_t a, vec2_t b)
 {
@@ -235,24 +504,43 @@ static size_t compute_all_hrvos(struct cp_ent ent, vec_cp_ent_t dyn_neighbs,
     return ret;
 }
 
+static inline bool det_less_than_eps_len(float det, float len_sq)
+{
+    return det < 0.0f || (det * det) < (EPSILON_SQ * len_sq);
+}
+
+static inline bool det_greater_than_neg_eps_len(float det, float len_sq)
+{
+    return det > 0.0f || (det * det) < (EPSILON_SQ * len_sq);
+}
+
 /* Points exactly 'on' the boundary will be considered as 'not inside' of the PCR for our purposes. */
 static bool inside_pcr(const struct line_2d *vo_lr_pairs, size_t n_rays, vec2_t test)
 {
     assert(n_rays % 2 == 0);
+    uint64_t timing_begin = clearpath_timing_begin();
+    uint64_t ray_pair_tests = 0;
+    uint64_t apex_skips = 0;
+
     for(int i = 0; i < n_rays; i+=2) {
+
+        ray_pair_tests++;
 
         assert(fabs(PFM_Vec2_Len(&vo_lr_pairs[i + 0].dir) - 1.0f) < EPSILON);
         const float left_dir_x = vo_lr_pairs[i + 0].dir.x;
         const float left_dir_z = vo_lr_pairs[i + 0].dir.z;
 
-        vec2_t point_to_test;
-        PFM_Vec2_Sub(&test, (vec2_t*)&vo_lr_pairs[i + 0].point, &point_to_test);
-        if(PFM_Vec2_Len(&point_to_test) < EPSILON)
+        float point_to_test_x = test.x - vo_lr_pairs[i + 0].point.x;
+        float point_to_test_z = test.z - vo_lr_pairs[i + 0].point.z;
+        float point_to_test_len_sq = point_to_test_x * point_to_test_x
+            + point_to_test_z * point_to_test_z;
+        if(point_to_test_len_sq < EPSILON_SQ) {
+            apex_skips++;
             continue;
-        PFM_Vec2_Normal(&point_to_test, &point_to_test);
+        }
 
-        float left_det = (point_to_test.z * left_dir_x) - (point_to_test.x * left_dir_z);
-        bool left_of_vo = (left_det < EPSILON);
+        float left_det = (point_to_test_z * left_dir_x) - (point_to_test_x * left_dir_z);
+        bool left_of_vo = det_less_than_eps_len(left_det, point_to_test_len_sq);
 
         if(left_of_vo)
             continue;
@@ -261,22 +549,57 @@ static bool inside_pcr(const struct line_2d *vo_lr_pairs, size_t n_rays, vec2_t 
         const float right_dir_x = vo_lr_pairs[i + 1].dir.x;
         const float right_dir_z = vo_lr_pairs[i + 1].dir.z;
 
-        PFM_Vec2_Sub(&test, (vec2_t*)&vo_lr_pairs[i + 1].point, &point_to_test);
-        if(PFM_Vec2_Len(&point_to_test) < EPSILON)
+        point_to_test_x = test.x - vo_lr_pairs[i + 1].point.x;
+        point_to_test_z = test.z - vo_lr_pairs[i + 1].point.z;
+        point_to_test_len_sq = point_to_test_x * point_to_test_x
+            + point_to_test_z * point_to_test_z;
+        if(point_to_test_len_sq < EPSILON_SQ) {
+            apex_skips++;
             continue;
-        PFM_Vec2_Normal(&point_to_test, &point_to_test);
+        }
 
-        float right_det = (point_to_test.z * right_dir_x) - (point_to_test.x * right_dir_z);
-        bool right_of_vo = (right_det > -EPSILON);
+        float right_det = (point_to_test_z * right_dir_x) - (point_to_test_x * right_dir_z);
+        bool right_of_vo = det_greater_than_neg_eps_len(right_det, point_to_test_len_sq);
 
         if(right_of_vo)
             continue;
 
         assert(!left_of_vo && !right_of_vo);
+        clearpath_stats_add(&s_clearpath_stats.inside_pcr_calls, 1);
+        clearpath_stats_add(&s_clearpath_stats.inside_pcr_ray_pair_tests, ray_pair_tests);
+        clearpath_stats_add(&s_clearpath_stats.inside_pcr_apex_skips, apex_skips);
+        clearpath_stats_add(&s_clearpath_stats.inside_pcr_hits, 1);
+        clearpath_stats_timing(CLEARPATH_TIMING_INSIDE_PCR, timing_begin);
         return true;
     }
 
+    clearpath_stats_add(&s_clearpath_stats.inside_pcr_calls, 1);
+    clearpath_stats_add(&s_clearpath_stats.inside_pcr_ray_pair_tests, ray_pair_tests);
+    clearpath_stats_add(&s_clearpath_stats.inside_pcr_apex_skips, apex_skips);
+    clearpath_stats_add(&s_clearpath_stats.inside_pcr_misses, 1);
+    clearpath_stats_timing(CLEARPATH_TIMING_INSIDE_PCR, timing_begin);
     return false;
+}
+
+static bool ray_ray_intersection_fast(struct line_2d l1, struct line_2d l2, vec2_t *out_xz)
+{
+    float denom = l1.dir.x * l2.dir.z - l1.dir.z * l2.dir.x;
+    if(fabsf(denom) < EPSILON)
+        return false;
+
+    float delta_x = l2.point.x - l1.point.x;
+    float delta_z = l2.point.z - l1.point.z;
+    float t = (delta_x * l2.dir.z - delta_z * l2.dir.x) / denom;
+    if(t < 0.0f)
+        return false;
+
+    float u = (delta_x * l1.dir.z - delta_z * l1.dir.x) / denom;
+    if(u < 0.0f)
+        return false;
+
+    out_xz->x = l1.point.x + t * l1.dir.x;
+    out_xz->z = l1.point.z + t * l1.dir.z;
+    return true;
 }
 
 static void rays_repr(const struct HRVO *hrvos, size_t n_hrvos,
@@ -310,32 +633,48 @@ static void rays_repr(const struct HRVO *hrvos, size_t n_hrvos,
 
 static size_t compute_vo_xpoints(struct line_2d *rays, size_t n_rays, vec_vec2_t *inout)
 {
+    uint64_t timing_begin = clearpath_timing_begin();
     size_t ret = 0;
-    for(int i = 0; i < n_rays; i++) {
-    for(int j = 0; j < n_rays; j++) {
+    uint64_t ray_pair_tests = 0;
+    uint64_t ray_pair_intersections = 0;
+    uint64_t inside_rejected = 0;
 
-        if(i == j) 
-            continue;
+    for(int i = 0; i < n_rays; i++) {
+    for(int j = i + 1; j < n_rays; j++) {
+
+        ray_pair_tests++;
 
         vec2_t isec_point;
-        if(!C_RayRayIntersection2D(rays[i], rays[j], &isec_point))
+        if(!ray_ray_intersection_fast(rays[i], rays[j], &isec_point))
             continue;
 
-        if(inside_pcr(rays, n_rays, isec_point))
+        ray_pair_intersections++;
+
+        if(inside_pcr(rays, n_rays, isec_point)) {
+            inside_rejected++;
             continue;
+        }
 
         vec_vec2_push(inout, isec_point);
         ret++;
     }}
 
+    clearpath_stats_add(&s_clearpath_stats.xpoint_calls, 1);
+    clearpath_stats_add(&s_clearpath_stats.xpoint_ray_pair_tests, ray_pair_tests);
+    clearpath_stats_add(&s_clearpath_stats.xpoint_ray_pair_intersections, ray_pair_intersections);
+    clearpath_stats_add(&s_clearpath_stats.xpoint_inside_rejected, inside_rejected);
+    clearpath_stats_add(&s_clearpath_stats.xpoint_accepted, ret);
+    clearpath_stats_timing(CLEARPATH_TIMING_XPOINTS, timing_begin);
     return ret;
 }
 
 static size_t compute_vdes_proj_points(struct line_2d *rays, size_t n_rays,
                                        vec2_t des_v, vec_vec2_t *inout)
 {
+    uint64_t timing_begin = clearpath_timing_begin();
     vec2_t proj;
     size_t ret = 0;
+    uint64_t projection_tests = 0;
 
     for(int i = 0; i < n_rays; i++) {
     
@@ -345,6 +684,7 @@ static size_t compute_vdes_proj_points(struct line_2d *rays, size_t n_rays,
         PFM_Vec2_Scale(&rays[i].dir, len, &proj);
         PFM_Vec2_Add(&rays[i].point, &proj, &proj);
 
+        projection_tests++;
         if(!inside_pcr(rays, n_rays, proj)) {
         
             vec_vec2_push(inout, proj);
@@ -352,6 +692,10 @@ static size_t compute_vdes_proj_points(struct line_2d *rays, size_t n_rays,
         }
     }
 
+    clearpath_stats_add(&s_clearpath_stats.projection_calls, 1);
+    clearpath_stats_add(&s_clearpath_stats.projection_tests, projection_tests);
+    clearpath_stats_add(&s_clearpath_stats.projection_accepted, ret);
+    clearpath_stats_timing(CLEARPATH_TIMING_PROJECTION, timing_begin);
     return ret;
 }
 
@@ -377,7 +721,7 @@ static vec2_t compute_vnew(const vec_vec2_t *outside_points, vec2_t des_v, vec2_
     return ret;
 }
 
-static void remove_furthest(vec2_t xz_pos, vec_cp_ent_t *dyn_inout, vec_cp_ent_t *stat_inout)
+static bool remove_furthest(vec2_t xz_pos, vec_cp_ent_t *dyn_inout, vec_cp_ent_t *stat_inout)
 {
     float max_dist = -INFINITY;
     vec_cp_ent_t *del_vec = NULL;
@@ -404,7 +748,33 @@ static void remove_furthest(vec2_t xz_pos, vec_cp_ent_t *dyn_inout, vec_cp_ent_t
     if(max_dist > -INFINITY) {
         assert(del_idx != -1);
         vec_cp_ent_del(del_vec, del_idx);
+        return true;
     }
+    return false;
+}
+
+static void cap_constraint_neighbours(vec2_t xz_pos,
+                                      vec_cp_ent_t *dyn_inout,
+                                      vec_cp_ent_t *stat_inout)
+{
+    if(s_max_constraint_neighbs == 0)
+        return;
+
+    size_t total = vec_size(dyn_inout) + vec_size(stat_inout);
+    if(total <= s_max_constraint_neighbs)
+        return;
+
+    clearpath_stats_add(&s_clearpath_stats.constraint_cap_attempts, 1);
+    clearpath_stats_max(&s_clearpath_stats.constraint_cap_max_input_neighbours, total);
+
+    size_t removed = 0;
+    while(total > s_max_constraint_neighbs) {
+        if(!remove_furthest(xz_pos, dyn_inout, stat_inout))
+            break;
+        total--;
+        removed++;
+    }
+    clearpath_stats_add(&s_clearpath_stats.constraint_cap_removes, removed);
 }
 
 static void on_render_3d(void *user, void *event)
@@ -551,6 +921,11 @@ static bool clearpath_new_velocity(struct cp_ent cpent,
     STALLOC(struct HRVO, dyn_hrvos, vec_size(&dyn_neighbs));
     STALLOC(struct VO, stat_vos, vec_size(&stat_neighbs));
 
+    clearpath_stats_add(&s_clearpath_stats.attempts, 1);
+    clearpath_stats_add(&s_clearpath_stats.dynamic_neighbours, vec_size(&dyn_neighbs));
+    clearpath_stats_add(&s_clearpath_stats.static_neighbours, vec_size(&stat_neighbs));
+
+    uint64_t timing_begin = clearpath_timing_begin();
     size_t n_hrvos = compute_all_hrvos(cpent, dyn_neighbs, dyn_hrvos);
     size_t n_vos = compute_all_vos(cpent, stat_neighbs, (struct VO*)stat_vos);
 
@@ -565,8 +940,14 @@ static bool clearpath_new_velocity(struct cp_ent cpent,
      * obstacle as a union of line segments. 
      */
     const size_t n_rays = (n_hrvos + n_vos) * 2;
+    clearpath_stats_add(&s_clearpath_stats.hrvos, n_hrvos);
+    clearpath_stats_add(&s_clearpath_stats.vos, n_vos);
+    clearpath_stats_add(&s_clearpath_stats.rays, n_rays);
+    clearpath_stats_max(&s_clearpath_stats.max_rays, n_rays);
+
     STALLOC(struct line_2d, rays, n_rays);
     rays_repr(dyn_hrvos, n_hrvos, stat_vos, n_vos, rays);
+    clearpath_stats_timing(CLEARPATH_TIMING_ATTEMPT_SETUP, timing_begin);
 
     if(save_debug) {
 
@@ -589,13 +970,18 @@ static bool clearpath_new_velocity(struct cp_ent cpent,
     vec2_t des_v_ws;
     PFM_Vec2_Add(&cpent.xz_pos, &ent_des_v, &des_v_ws);
 
+    timing_begin = clearpath_timing_begin();
     if(!inside_pcr(rays, n_rays, des_v_ws)) {
+        clearpath_stats_timing(CLEARPATH_TIMING_DESIRED_PCR, timing_begin);
 
+        clearpath_stats_add(&s_clearpath_stats.desired_outside_pcr, 1);
         s_debug_saved.des_v_in_pcr = false;
         *out = ent_des_v;
         status = true;
         goto out;
     }
+    clearpath_stats_timing(CLEARPATH_TIMING_DESIRED_PCR, timing_begin);
+    clearpath_stats_add(&s_clearpath_stats.desired_inside_pcr, 1);
 
     vec_vec2_t xpoints;
     vec_vec2_init(&xpoints);
@@ -614,12 +1000,18 @@ static bool clearpath_new_velocity(struct cp_ent cpent,
      */
     compute_vdes_proj_points(rays, n_rays, ent_des_v, &xpoints);
 
+    clearpath_stats_add(&s_clearpath_stats.candidate_points_total, vec_size(&xpoints));
+    clearpath_stats_max(&s_clearpath_stats.max_candidate_points, vec_size(&xpoints));
+
     if(vec_size(&xpoints) == 0) {
+        clearpath_stats_add(&s_clearpath_stats.no_solution_attempts, 1);
         vec_vec2_destroy(&xpoints);
         goto out;    
     }
 
+    timing_begin = clearpath_timing_begin();
     vec2_t ret = compute_vnew(&xpoints, ent_des_v, cpent.xz_pos);
+    clearpath_stats_timing(CLEARPATH_TIMING_COMPUTE_VNEW, timing_begin);
 
     if(save_debug) {
     
@@ -670,6 +1062,8 @@ bool G_ClearPath_ShouldSaveDebug(uint32_t ent_uid)
 
 void G_ClearPath_Init(const struct map *map)
 {
+    clearpath_config_init();
+    clearpath_stats_init();
     E_Global_Register(EVENT_RENDER_3D_POST, on_render_3d, (struct map*)map, 
         G_RUNNING | G_PAUSED_FULL | G_PAUSED_UI_RUNNING);
     vec_vec2_init(&s_debug_saved.xpoints);
@@ -677,8 +1071,14 @@ void G_ClearPath_Init(const struct map *map)
 
 void G_ClearPath_Shutdown(void)
 {
+    clearpath_stats_write();
     E_Global_Unregister(EVENT_RENDER_3D_POST, on_render_3d);
     vec_vec2_destroy(&s_debug_saved.xpoints);
+}
+
+void G_ClearPath_WriteStats(void)
+{
+    clearpath_stats_write();
 }
 
 vec2_t G_ClearPath_NewVelocity(struct cp_ent cpent,
@@ -689,17 +1089,47 @@ vec2_t G_ClearPath_NewVelocity(struct cp_ent cpent,
                                bool save_debug)
 {
     PERF_ENTER();
+    clearpath_stats_add(&s_clearpath_stats.calls, 1);
+
+    size_t removed_total = 0;
+
+    uint64_t timing_begin = clearpath_timing_begin();
+    cap_constraint_neighbours(cpent.xz_pos, &dyn_neighbs, &stat_neighbs);
+    clearpath_stats_timing(CLEARPATH_TIMING_CONSTRAINT_CAP, timing_begin);
 
     do{
         vec2_t ret;
         bool found = clearpath_new_velocity(cpent, ent_uid, ent_des_v, 
             dyn_neighbs, stat_neighbs, save_debug, &ret);
-        if(found)
+        if(found) {
+            clearpath_stats_add(&s_clearpath_stats.successes, 1);
             PERF_RETURN(ret);
+        }
 
-        remove_furthest(cpent.xz_pos, &dyn_neighbs, &stat_neighbs);
+        clearpath_stats_add(&s_clearpath_stats.fallback_retry_steps, 1);
+
+        size_t curr_neighbs = vec_size(&dyn_neighbs) + vec_size(&stat_neighbs);
+        size_t batch = (curr_neighbs >= s_fallback_batch_min_neighbs)
+            ? s_fallback_remove_batch : 1;
+
+        for(size_t i = 0; i < batch; i++) {
+            if(s_fallback_max_removes > 0 && removed_total >= s_fallback_max_removes) {
+                clearpath_stats_add(&s_clearpath_stats.fallback_cap_returns, 1);
+                clearpath_stats_add(&s_clearpath_stats.zero_velocity_returns, 1);
+                PERF_RETURN((vec2_t){0.0f, 0.0f});
+            }
+            if(vec_size(&dyn_neighbs) == 0 || vec_size(&stat_neighbs) == 0)
+                break;
+            timing_begin = clearpath_timing_begin();
+            if(!remove_furthest(cpent.xz_pos, &dyn_neighbs, &stat_neighbs))
+                break;
+            clearpath_stats_timing(CLEARPATH_TIMING_FALLBACK_REMOVE, timing_begin);
+            removed_total++;
+            clearpath_stats_add(&s_clearpath_stats.fallback_removes, 1);
+        }
 
     }while(vec_size(&dyn_neighbs) > 0 && vec_size(&stat_neighbs) > 0);
 
+    clearpath_stats_add(&s_clearpath_stats.zero_velocity_returns, 1);
     PERF_RETURN((vec2_t){0.0f, 0.0f});
 }

@@ -278,7 +278,7 @@ static void phys_proj_spawn_trails(void)
 {
     for(int i = 0; i < vec_size(&s_front); i++) {
         struct projectile *curr = &vec_AT(&s_front, i);
-        if(!(curr->flags & PROJ_HAS_TRAIL_SPRITE))
+        if(!(curr->sprite_flags & PROJ_HAS_TRAIL_SPRITE))
             continue;
         vec3_t delta;
         PFM_Vec3_Sub(&curr->pos, &curr->prev_trail_pos, &delta);
@@ -634,6 +634,9 @@ bool P_Projectile_VelocityForTarget(vec3_t src, vec3_t dst, float init_speed,
     const float v = init_speed / PHYS_HZ;
     const float g = GRAVITY;
 
+    if(!isfinite(x) || !isfinite(y) || !isfinite(v) || x <= EPSILON || v <= EPSILON)
+        return false;
+
     /* To hit a target at range x and altitude y when fired from (0,0) 
      * and with initial speed v the required angle of launch THETA is: 
      *
@@ -648,10 +651,13 @@ bool P_Projectile_VelocityForTarget(vec3_t src, vec3_t dst, float init_speed,
      */
 
     float descriminant = pow(v, 4) - g * (g * pow(x, 2) + 2 * y * pow(v, 2));
+    if(!isfinite(descriminant))
+        return false;
     if(descriminant < -EPSILON) {
         /* No real solutions */
         return false;
     }
+    descriminant = MAX(descriminant, 0.0f);
 
     size_t nsolutions = 1;
     if(fabs(descriminant) > EPSILON) {
@@ -670,15 +676,20 @@ bool P_Projectile_VelocityForTarget(vec3_t src, vec3_t dst, float init_speed,
     }else{
         tan_theta = t1 / (g * x);
     }
+    if(!isfinite(tan_theta))
+        return false;
 
     /* Theta is the angle of motion up from the ground along the angle of motion.
      * Convert this to a velocity vector. 
      */
     float xlen = sqrt(pow(delta.x, 2) + pow(delta.z, 2));
     float ylen = xlen * tan_theta;
+    if(!isfinite(ylen))
+        return false;
 
     vec3_t velocity = (vec3_t){ delta.x, ylen, delta.z };
-    if(PFM_Vec3_Len(&velocity) <= EPSILON) {
+    const float velocity_len = PFM_Vec3_Len(&velocity);
+    if(!isfinite(velocity_len) || velocity_len <= EPSILON) {
         return false;
     }
     assert(PFM_Vec3_Len(&velocity) > EPSILON);

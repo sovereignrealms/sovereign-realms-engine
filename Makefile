@@ -293,6 +293,7 @@ WARNING_FLAGS = \
 EXTRA_DEBUG_FLAGS = -g
 EXTRA_RELEASE_FLAGS = -DNDEBUG
 EXTRA_FLAGS = $(EXTRA_$(TYPE)_FLAGS)
+EXTRA_CFLAGS ?=
 
 ifneq ($(ASAN),0)
 ASAN_CFLAGS = -fsanitize=address -static-libasan
@@ -319,7 +320,8 @@ CFLAGS = \
 	$(TSAN_CFLAGS) \
 	$(WARNING_FLAGS) \
 	$(LTO_CFLAGS) \
-	$(EXTRA_FLAGS)
+	$(EXTRA_FLAGS) \
+	$(EXTRA_CFLAGS)
 
 LDFLAGS = \
 	-L./lib/ \
@@ -339,7 +341,8 @@ OBJCFLAGS = \
 	-fobjc-arc \
 	$(WARNING_FLAGS) \
 	$(LTO_CFLAGS) \
-	$(EXTRA_FLAGS)
+	$(EXTRA_FLAGS) \
+	$(EXTRA_CFLAGS)
 
 # ------------------------------------------------------------------------------
 # Targets

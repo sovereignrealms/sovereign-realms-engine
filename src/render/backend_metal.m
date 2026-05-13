@@ -74,12 +74,21 @@ static id<MTLRenderPipelineState> s_static_mesh_depth_pipeline;
 static id<MTLRenderPipelineState> s_static_mesh_depth_msaa_pipeline;
 static id<MTLRenderPipelineState> s_static_mesh_blend_depth_pipeline;
 static id<MTLRenderPipelineState> s_static_mesh_blend_depth_msaa_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_msaa_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_blend_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_blend_msaa_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_depth_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_depth_msaa_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_blend_depth_pipeline;
+static id<MTLRenderPipelineState> s_skinned_mesh_blend_depth_msaa_pipeline;
 static id<MTLRenderPipelineState> s_world_color_pipeline;
 static id<MTLRenderPipelineState> s_world_color_msaa_pipeline;
 static id<MTLRenderPipelineState> s_world_color_depth_pipeline;
 static id<MTLRenderPipelineState> s_world_color_depth_msaa_pipeline;
 static id<MTLRenderPipelineState> s_shadow_terrain_pipeline;
 static id<MTLRenderPipelineState> s_shadow_mesh_pipeline;
+static id<MTLRenderPipelineState> s_shadow_skinned_mesh_pipeline;
 static id<MTLRenderPipelineState> s_shadow_owner_terrain_pipeline;
 static id<MTLRenderPipelineState> s_shadow_owner_mesh_pipeline;
 static id<MTLRenderPipelineState> s_water_surface_pipeline;
@@ -179,6 +188,8 @@ static unsigned        s_capture_stop_present;
 static char            s_capture_output_path[PATH_MAX];
 static bool            s_raw_material_debug_env_checked;
 static bool            s_raw_material_debug_enabled;
+static bool            s_gpu_skinning_env_checked;
+static bool            s_gpu_skinning_enabled;
 static bool            s_msaa_env_checked;
 static NSUInteger      s_requested_sample_count;
 static bool            s_shadow_screen_probe_env_checked;
@@ -867,6 +878,52 @@ static const char *s_static_mesh_shader_source =
 "    out.light_space_pos = uniforms.light_space_transform * float4(world_pos.xyz, 1.0);\n"
 "    return out;\n"
 "}\n"
+"struct SkinnedMeshVertexIn {\n"
+"    float3 position [[attribute(0)]];\n"
+"    float2 uv [[attribute(1)]];\n"
+"    float3 normal [[attribute(2)]];\n"
+"    int material_idx [[attribute(3)]];\n"
+"    uchar4 joint_indices0 [[attribute(4)]];\n"
+"    uchar4 joint_indices1 [[attribute(5)]];\n"
+"    float4 weights0 [[attribute(6)]];\n"
+"    float2 weights1 [[attribute(7)]];\n"
+"};\n"
+"struct SkinnedInstance {\n"
+"    float4x4 model;\n"
+"    float4x4 normal_transform;\n"
+"    uint4 skin_params;\n"
+"};\n"
+"vertex StaticMeshVertexOut skinned_mesh_vertex(SkinnedMeshVertexIn in [[stage_in]], uint instance_id [[instance_id]], constant StaticMeshUniforms &uniforms [[buffer(1)]], constant SkinnedInstance *instances [[buffer(2)]], constant float4x4 *skin_mats [[buffer(3)]], constant float4x4 *skin_normal_mats [[buffer(4)]]) {\n"
+"    SkinnedInstance inst = instances[instance_id];\n"
+"    uint joint_base = inst.skin_params.x;\n"
+"    uint joint_count = inst.skin_params.y;\n"
+"    uint joints[6] = {uint(in.joint_indices0.x), uint(in.joint_indices0.y), uint(in.joint_indices0.z), uint(in.joint_indices0.w), uint(in.joint_indices1.x), uint(in.joint_indices1.y)};\n"
+"    float weights[6] = {in.weights0.x, in.weights0.y, in.weights0.z, in.weights0.w, in.weights1.x, in.weights1.y};\n"
+"    float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5];\n"
+"    float inv_total_weight = total_weight > 0.0 ? 1.0 / total_weight : 0.0;\n"
+"    float3 world_pos_accum = float3(0.0);\n"
+"    float3 world_normal_accum = float3(0.0);\n"
+"    bool weighted = false;\n"
+"    for(uint i = 0u; i < 6u; i++) {\n"
+"        float weight = weights[i] * inv_total_weight;\n"
+"        uint joint_idx = joints[i];\n"
+"        if(weight <= 0.0 || joint_idx >= joint_count) continue;\n"
+"        uint mat_idx = joint_base + joint_idx;\n"
+"        world_pos_accum += (skin_mats[mat_idx] * float4(in.position, 1.0)).xyz * weight;\n"
+"        world_normal_accum += (skin_normal_mats[mat_idx] * float4(in.normal, 0.0)).xyz * weight;\n"
+"        weighted = true;\n"
+"    }\n"
+"    float3 world_pos = weighted ? world_pos_accum : (inst.model * float4(in.position, 1.0)).xyz;\n"
+"    float3 normal = weighted ? normalize(world_normal_accum) : normalize((inst.normal_transform * float4(in.normal, 0.0)).xyz);\n"
+"    StaticMeshVertexOut out;\n"
+"    out.position = uniforms.proj * uniforms.view * float4(world_pos, 1.0);\n"
+"    out.normal = normal;\n"
+"    out.uv = in.uv;\n"
+"    out.material_idx = (uint)max(in.material_idx, 0);\n"
+"    out.world_pos = world_pos;\n"
+"    out.light_space_pos = uniforms.light_space_transform * float4(world_pos, 1.0);\n"
+"    return out;\n"
+"}\n"
 "static float mesh_shadow_factor(float4 light_space_pos, depth2d<float> shadow_map, sampler shadow_sampler, float bias) {\n"
 "    float w = max(abs(light_space_pos.w), 0.0001);\n"
 "    float2 proj_ndc = light_space_pos.xy / w;\n"
@@ -933,6 +990,43 @@ static const char *s_shadow_depth_shader_source =
 "vertex ShadowVertexOut shadow_depth_vertex(ShadowVertexIn in [[stage_in]], constant ShadowUniforms &uniforms [[buffer(1)]]) {\n"
 "    ShadowVertexOut out;\n"
 "    out.position = uniforms.proj * uniforms.view * uniforms.model * float4(in.position, 1.0);\n"
+"    return out;\n"
+"}\n"
+"struct ShadowSkinnedVertexIn {\n"
+"    float3 position [[attribute(0)]];\n"
+"    float2 uv [[attribute(1)]];\n"
+"    float3 normal [[attribute(2)]];\n"
+"    int material_idx [[attribute(3)]];\n"
+"    uchar4 joint_indices0 [[attribute(4)]];\n"
+"    uchar4 joint_indices1 [[attribute(5)]];\n"
+"    float4 weights0 [[attribute(6)]];\n"
+"    float2 weights1 [[attribute(7)]];\n"
+"};\n"
+"struct ShadowSkinnedInstance {\n"
+"    float4x4 model;\n"
+"    float4x4 normal_transform;\n"
+"    uint4 skin_params;\n"
+"};\n"
+"vertex ShadowVertexOut shadow_skinned_vertex(ShadowSkinnedVertexIn in [[stage_in]], uint instance_id [[instance_id]], constant ShadowUniforms &uniforms [[buffer(1)]], constant ShadowSkinnedInstance *instances [[buffer(2)]], constant float4x4 *skin_mats [[buffer(3)]]) {\n"
+"    ShadowSkinnedInstance inst = instances[instance_id];\n"
+"    uint joint_base = inst.skin_params.x;\n"
+"    uint joint_count = inst.skin_params.y;\n"
+"    uint joints[6] = {uint(in.joint_indices0.x), uint(in.joint_indices0.y), uint(in.joint_indices0.z), uint(in.joint_indices0.w), uint(in.joint_indices1.x), uint(in.joint_indices1.y)};\n"
+"    float weights[6] = {in.weights0.x, in.weights0.y, in.weights0.z, in.weights0.w, in.weights1.x, in.weights1.y};\n"
+"    float total_weight = weights[0] + weights[1] + weights[2] + weights[3] + weights[4] + weights[5];\n"
+"    float inv_total_weight = total_weight > 0.0 ? 1.0 / total_weight : 0.0;\n"
+"    float3 world_pos_accum = float3(0.0);\n"
+"    bool weighted = false;\n"
+"    for(uint i = 0u; i < 6u; i++) {\n"
+"        float weight = weights[i] * inv_total_weight;\n"
+"        uint joint_idx = joints[i];\n"
+"        if(weight <= 0.0 || joint_idx >= joint_count) continue;\n"
+"        world_pos_accum += (skin_mats[joint_base + joint_idx] * float4(in.position, 1.0)).xyz * weight;\n"
+"        weighted = true;\n"
+"    }\n"
+"    float3 world_pos = weighted ? world_pos_accum : (inst.model * float4(in.position, 1.0)).xyz;\n"
+"    ShadowVertexOut out;\n"
+"    out.position = uniforms.proj * uniforms.view * float4(world_pos, 1.0);\n"
 "    return out;\n"
 "}\n"
 "fragment uint shadow_owner_fragment(ShadowVertexOut in [[stage_in]], constant ShadowUniforms &uniforms [[buffer(1)]]) {\n"
@@ -1224,6 +1318,12 @@ struct metal_static_mesh_uniforms{
     vector_float4 clip_params;
 };
 
+struct metal_skinned_instance{
+    matrix_float4x4 model;
+    matrix_float4x4 normal_transform;
+    vector_uint4    skin_params;
+};
+
 struct metal_world_color_uniforms{
     matrix_float4x4 view;
     matrix_float4x4 proj;
@@ -1306,6 +1406,9 @@ static bool append_skinned_anim_mesh(const struct render_private *priv,
                                      size_t *dst_idx);
 static void render_static_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent);
 static void render_skinned_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent);
+static bool render_shadow_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int start,
+                                                 const struct render_private *priv,
+                                                 size_t group_count);
 static void render_batched_stat_entities(const vec_rstat_t *ents);
 static void render_batched_anim_entities(const vec_ranim_t *ents);
 
@@ -1419,12 +1522,21 @@ static void release_scene_resources(void)
     s_static_mesh_depth_msaa_pipeline = nil;
     s_static_mesh_blend_depth_pipeline = nil;
     s_static_mesh_blend_depth_msaa_pipeline = nil;
+    s_skinned_mesh_pipeline = nil;
+    s_skinned_mesh_msaa_pipeline = nil;
+    s_skinned_mesh_blend_pipeline = nil;
+    s_skinned_mesh_blend_msaa_pipeline = nil;
+    s_skinned_mesh_depth_pipeline = nil;
+    s_skinned_mesh_depth_msaa_pipeline = nil;
+    s_skinned_mesh_blend_depth_pipeline = nil;
+    s_skinned_mesh_blend_depth_msaa_pipeline = nil;
     s_world_color_pipeline = nil;
     s_world_color_msaa_pipeline = nil;
     s_world_color_depth_pipeline = nil;
     s_world_color_depth_msaa_pipeline = nil;
     s_shadow_terrain_pipeline = nil;
     s_shadow_mesh_pipeline = nil;
+    s_shadow_skinned_mesh_pipeline = nil;
     s_shadow_owner_terrain_pipeline = nil;
     s_shadow_owner_mesh_pipeline = nil;
     s_water_surface_pipeline = nil;
@@ -1565,6 +1677,16 @@ static bool raw_material_debug_enabled(void)
     return s_raw_material_debug_enabled;
 }
 
+static bool gpu_skinning_enabled(void)
+{
+    if(!s_gpu_skinning_env_checked) {
+        const char *value = getenv("PF_METAL_GPU_SKINNING");
+        s_gpu_skinning_enabled = !value || !*value || strcmp(value, "0");
+        s_gpu_skinning_env_checked = true;
+    }
+    return s_gpu_skinning_enabled;
+}
+
 static bool shadow_screen_probe_enabled(void)
 {
     if(!s_shadow_screen_probe_env_checked) {
@@ -1661,16 +1783,151 @@ static void normal_transform_from_mat4(const mat4x4_t *in, mat4x4_t *out)
 
 static vec3_t transform_normal_with_mat4(const mat4x4_t *mat, vec3_t normal)
 {
-    vec4_t in = {normal.x, normal.y, normal.z, 0.0f};
-    vec4_t out = {0};
-    PFM_Mat4x4_Mult4x1((mat4x4_t *)mat, &in, &out);
+    vec3_t ret = {
+        mat->cols[0][0] * normal.x + mat->cols[1][0] * normal.y + mat->cols[2][0] * normal.z,
+        mat->cols[0][1] * normal.x + mat->cols[1][1] * normal.y + mat->cols[2][1] * normal.z,
+        mat->cols[0][2] * normal.x + mat->cols[1][2] * normal.y + mat->cols[2][2] * normal.z,
+    };
+    float len_sq = ret.x * ret.x + ret.y * ret.y + ret.z * ret.z;
+    if(len_sq <= 0.00000001f)
+        return normal;
 
-    vec3_t ret = {out.x, out.y, out.z};
-    if(PFM_Vec3_Len(&ret) > 0.0001f)
-        PFM_Vec3_Normal(&ret, &ret);
-    else
-        ret = normal;
+    float inv_len = 1.0f / sqrtf(len_sq);
+    ret.x *= inv_len;
+    ret.y *= inv_len;
+    ret.z *= inv_len;
     return ret;
+}
+
+static __attribute__((always_inline)) inline vec3_t transform_point_with_mat4(const mat4x4_t *mat, vec3_t point)
+{
+    return (vec3_t){
+        mat->cols[0][0] * point.x + mat->cols[1][0] * point.y + mat->cols[2][0] * point.z + mat->cols[3][0],
+        mat->cols[0][1] * point.x + mat->cols[1][1] * point.y + mat->cols[2][1] * point.z + mat->cols[3][1],
+        mat->cols[0][2] * point.x + mat->cols[1][2] * point.y + mat->cols[2][2] * point.z + mat->cols[3][2],
+    };
+}
+
+static __attribute__((always_inline)) inline vec3_t transform_vector_with_mat4(const mat4x4_t *mat, vec3_t vector)
+{
+    return (vec3_t){
+        mat->cols[0][0] * vector.x + mat->cols[1][0] * vector.y + mat->cols[2][0] * vector.z,
+        mat->cols[0][1] * vector.x + mat->cols[1][1] * vector.y + mat->cols[2][1] * vector.z,
+        mat->cols[0][2] * vector.x + mat->cols[1][2] * vector.y + mat->cols[2][2] * vector.z,
+    };
+}
+
+static __attribute__((always_inline)) inline bool normalize_vec3_fast(vec3_t *vec)
+{
+    float len_sq = vec->x * vec->x + vec->y * vec->y + vec->z * vec->z;
+    if(len_sq <= 0.00000001f)
+        return false;
+
+    float inv_len = 1.0f / sqrtf(len_sq);
+    vec->x *= inv_len;
+    vec->y *= inv_len;
+    vec->z *= inv_len;
+    return true;
+}
+
+struct skinned_mesh_cache_entry {
+    uint32_t uid;
+    const struct render_private *priv;
+    mat4x4_t model;
+    struct vertex *verts;
+    size_t vert_count;
+    size_t capacity;
+};
+
+static struct skinned_mesh_cache_entry *s_skinned_mesh_cache;
+static size_t s_skinned_mesh_cache_count;
+static size_t s_skinned_mesh_cache_capacity;
+static bool s_skinned_mesh_cache_active;
+
+static void skinned_mesh_cache_begin_frame(void)
+{
+    s_skinned_mesh_cache_count = 0;
+    s_skinned_mesh_cache_active = true;
+}
+
+static void skinned_mesh_cache_end_frame(void)
+{
+    s_skinned_mesh_cache_active = false;
+}
+
+static void skinned_mesh_cache_destroy(void)
+{
+    for(size_t i = 0; i < s_skinned_mesh_cache_capacity; i++) {
+        free(s_skinned_mesh_cache[i].verts);
+    }
+    free(s_skinned_mesh_cache);
+    s_skinned_mesh_cache = NULL;
+    s_skinned_mesh_cache_count = 0;
+    s_skinned_mesh_cache_capacity = 0;
+    s_skinned_mesh_cache_active = false;
+}
+
+static const struct vertex *skinned_mesh_cache_lookup(const struct render_private *priv,
+                                                      uint32_t uid,
+                                                      const mat4x4_t *model,
+                                                      size_t *out_count)
+{
+    if(out_count)
+        *out_count = 0;
+    if(!s_skinned_mesh_cache_active || !priv || !model)
+        return NULL;
+
+    for(size_t i = 0; i < s_skinned_mesh_cache_count; i++) {
+        struct skinned_mesh_cache_entry *entry = &s_skinned_mesh_cache[i];
+        if(entry->uid != uid || entry->priv != priv)
+            continue;
+        if(memcmp(&entry->model, model, sizeof(*model)) != 0)
+            continue;
+        if(out_count)
+            *out_count = entry->vert_count;
+        return entry->verts;
+    }
+    return NULL;
+}
+
+static bool skinned_mesh_cache_store(const struct render_private *priv,
+                                     uint32_t uid,
+                                     const mat4x4_t *model,
+                                     const struct vertex *verts,
+                                     size_t vert_count)
+{
+    if(!s_skinned_mesh_cache_active || !priv || !model || !verts || !vert_count)
+        return false;
+
+    if(s_skinned_mesh_cache_count == s_skinned_mesh_cache_capacity) {
+        size_t new_capacity = s_skinned_mesh_cache_capacity ? s_skinned_mesh_cache_capacity * 2 : 128;
+        struct skinned_mesh_cache_entry *new_cache = realloc(s_skinned_mesh_cache,
+            new_capacity * sizeof(*new_cache));
+        if(!new_cache)
+            return false;
+        memset(new_cache + s_skinned_mesh_cache_capacity, 0,
+            (new_capacity - s_skinned_mesh_cache_capacity) * sizeof(*new_cache));
+        s_skinned_mesh_cache = new_cache;
+        s_skinned_mesh_cache_capacity = new_capacity;
+    }
+
+    struct skinned_mesh_cache_entry *entry = &s_skinned_mesh_cache[s_skinned_mesh_cache_count++];
+    if(entry->capacity < vert_count) {
+        struct vertex *new_verts = realloc(entry->verts, vert_count * sizeof(*new_verts));
+        if(!new_verts) {
+            s_skinned_mesh_cache_count--;
+            return false;
+        }
+        entry->verts = new_verts;
+        entry->capacity = vert_count;
+    }
+
+    entry->uid = uid;
+    entry->priv = priv;
+    entry->model = *model;
+    entry->vert_count = vert_count;
+    memcpy(entry->verts, verts, vert_count * sizeof(*verts));
+    return true;
 }
 
 static void set_current_anim_uid(uint32_t uid)
@@ -2403,6 +2660,100 @@ static id<MTLRenderPipelineState> ensure_static_mesh_pipeline(bool translucent, 
     return *slot;
 }
 
+static id<MTLRenderPipelineState> build_skinned_mesh_pipeline(bool translucent, NSUInteger sample_count,
+                                                              bool depth_enabled)
+{
+    NSError *error = nil;
+    NSString *source = [NSString stringWithUTF8String:s_static_mesh_shader_source];
+    id<MTLLibrary> library = [s_device newLibraryWithSource:source options:nil error:&error];
+    if(!library) {
+        fprintf(stderr, "Metal skinned mesh shader compile failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    id<MTLFunction> vertex = [library newFunctionWithName:@"skinned_mesh_vertex"];
+    id<MTLFunction> fragment = [library newFunctionWithName:@"static_mesh_fragment"];
+    if(!vertex || !fragment) {
+        fprintf(stderr, "Metal skinned mesh shader entrypoint lookup failed.\n");
+        return nil;
+    }
+
+    MTLVertexDescriptor *vertex_desc = [MTLVertexDescriptor vertexDescriptor];
+    vertex_desc.attributes[0].format = MTLVertexFormatFloat3;
+    vertex_desc.attributes[0].offset = offsetof(struct anim_vert, pos);
+    vertex_desc.attributes[0].bufferIndex = 0;
+    vertex_desc.attributes[1].format = MTLVertexFormatFloat2;
+    vertex_desc.attributes[1].offset = offsetof(struct anim_vert, uv);
+    vertex_desc.attributes[1].bufferIndex = 0;
+    vertex_desc.attributes[2].format = MTLVertexFormatFloat3;
+    vertex_desc.attributes[2].offset = offsetof(struct anim_vert, normal);
+    vertex_desc.attributes[2].bufferIndex = 0;
+    vertex_desc.attributes[3].format = MTLVertexFormatInt;
+    vertex_desc.attributes[3].offset = offsetof(struct anim_vert, material_idx);
+    vertex_desc.attributes[3].bufferIndex = 0;
+    vertex_desc.attributes[4].format = MTLVertexFormatUChar4;
+    vertex_desc.attributes[4].offset = offsetof(struct anim_vert, joint_indices);
+    vertex_desc.attributes[4].bufferIndex = 0;
+    vertex_desc.attributes[5].format = MTLVertexFormatUChar4;
+    vertex_desc.attributes[5].offset = offsetof(struct anim_vert, joint_indices) + 4;
+    vertex_desc.attributes[5].bufferIndex = 0;
+    vertex_desc.attributes[6].format = MTLVertexFormatFloat4;
+    vertex_desc.attributes[6].offset = offsetof(struct anim_vert, weights);
+    vertex_desc.attributes[6].bufferIndex = 0;
+    vertex_desc.attributes[7].format = MTLVertexFormatFloat2;
+    vertex_desc.attributes[7].offset = offsetof(struct anim_vert, weights) + 4 * sizeof(float);
+    vertex_desc.attributes[7].bufferIndex = 0;
+    vertex_desc.layouts[0].stride = sizeof(struct anim_vert);
+    vertex_desc.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+
+    MTLRenderPipelineDescriptor *pipeline_desc = [[MTLRenderPipelineDescriptor alloc] init];
+    pipeline_desc.vertexFunction = vertex;
+    pipeline_desc.fragmentFunction = fragment;
+    pipeline_desc.vertexDescriptor = vertex_desc;
+    pipeline_desc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    pipeline_desc.rasterSampleCount = sample_count;
+    if(depth_enabled)
+        pipeline_desc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    if(translucent) {
+        pipeline_desc.colorAttachments[0].blendingEnabled = YES;
+        pipeline_desc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+        pipeline_desc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+        pipeline_desc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceColor;
+        pipeline_desc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceColor;
+        pipeline_desc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorSourceAlpha;
+        pipeline_desc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    }
+
+    id<MTLRenderPipelineState> pipeline = [s_device newRenderPipelineStateWithDescriptor:pipeline_desc error:&error];
+    if(!pipeline) {
+        fprintf(stderr, "Metal skinned mesh pipeline creation failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    return pipeline;
+}
+
+static id<MTLRenderPipelineState> ensure_skinned_mesh_pipeline(bool translucent, bool multisampled,
+                                                               bool depth_enabled)
+{
+    id<MTLRenderPipelineState> __strong *slot = NULL;
+    if(depth_enabled && translucent) {
+        slot = multisampled ? &s_skinned_mesh_blend_depth_msaa_pipeline : &s_skinned_mesh_blend_depth_pipeline;
+    } else if(depth_enabled) {
+        slot = multisampled ? &s_skinned_mesh_depth_msaa_pipeline : &s_skinned_mesh_depth_pipeline;
+    } else if(translucent) {
+        slot = multisampled ? &s_skinned_mesh_blend_msaa_pipeline : &s_skinned_mesh_blend_pipeline;
+    } else {
+        slot = multisampled ? &s_skinned_mesh_msaa_pipeline : &s_skinned_mesh_pipeline;
+    }
+    if(*slot)
+        return *slot;
+    *slot = build_skinned_mesh_pipeline(translucent, multisampled ? active_msaa_sample_count() : 1, depth_enabled);
+    return *slot;
+}
+
 static id<MTLRenderPipelineState> build_world_color_pipeline(NSUInteger sample_count, bool depth_enabled)
 {
     NSError *error = nil;
@@ -2662,6 +3013,74 @@ static id<MTLRenderPipelineState> ensure_shadow_depth_pipeline(bool terrain, boo
     return *slot;
 }
 
+static id<MTLRenderPipelineState> build_shadow_skinned_mesh_pipeline(void)
+{
+    NSError *error = nil;
+    NSString *source = [NSString stringWithUTF8String:s_shadow_depth_shader_source];
+    id<MTLLibrary> library = [s_device newLibraryWithSource:source options:nil error:&error];
+    if(!library) {
+        fprintf(stderr, "Metal shadow skinned shader compile failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    id<MTLFunction> vertex = [library newFunctionWithName:@"shadow_skinned_vertex"];
+    if(!vertex) {
+        fprintf(stderr, "Metal shadow skinned shader entrypoint lookup failed.\n");
+        return nil;
+    }
+
+    MTLVertexDescriptor *vertex_desc = [MTLVertexDescriptor vertexDescriptor];
+    vertex_desc.attributes[0].format = MTLVertexFormatFloat3;
+    vertex_desc.attributes[0].offset = offsetof(struct anim_vert, pos);
+    vertex_desc.attributes[0].bufferIndex = 0;
+    vertex_desc.attributes[1].format = MTLVertexFormatFloat2;
+    vertex_desc.attributes[1].offset = offsetof(struct anim_vert, uv);
+    vertex_desc.attributes[1].bufferIndex = 0;
+    vertex_desc.attributes[2].format = MTLVertexFormatFloat3;
+    vertex_desc.attributes[2].offset = offsetof(struct anim_vert, normal);
+    vertex_desc.attributes[2].bufferIndex = 0;
+    vertex_desc.attributes[3].format = MTLVertexFormatInt;
+    vertex_desc.attributes[3].offset = offsetof(struct anim_vert, material_idx);
+    vertex_desc.attributes[3].bufferIndex = 0;
+    vertex_desc.attributes[4].format = MTLVertexFormatUChar4;
+    vertex_desc.attributes[4].offset = offsetof(struct anim_vert, joint_indices);
+    vertex_desc.attributes[4].bufferIndex = 0;
+    vertex_desc.attributes[5].format = MTLVertexFormatUChar4;
+    vertex_desc.attributes[5].offset = offsetof(struct anim_vert, joint_indices) + 4;
+    vertex_desc.attributes[5].bufferIndex = 0;
+    vertex_desc.attributes[6].format = MTLVertexFormatFloat4;
+    vertex_desc.attributes[6].offset = offsetof(struct anim_vert, weights);
+    vertex_desc.attributes[6].bufferIndex = 0;
+    vertex_desc.attributes[7].format = MTLVertexFormatFloat2;
+    vertex_desc.attributes[7].offset = offsetof(struct anim_vert, weights) + 4 * sizeof(float);
+    vertex_desc.attributes[7].bufferIndex = 0;
+    vertex_desc.layouts[0].stride = sizeof(struct anim_vert);
+    vertex_desc.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+
+    MTLRenderPipelineDescriptor *pipeline_desc = [[MTLRenderPipelineDescriptor alloc] init];
+    pipeline_desc.vertexFunction = vertex;
+    pipeline_desc.vertexDescriptor = vertex_desc;
+    pipeline_desc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+
+    id<MTLRenderPipelineState> pipeline = [s_device newRenderPipelineStateWithDescriptor:pipeline_desc error:&error];
+    if(!pipeline) {
+        fprintf(stderr, "Metal shadow skinned pipeline creation failed: %s\n",
+            error ? [[error localizedDescription] UTF8String] : "unknown error");
+        return nil;
+    }
+
+    return pipeline;
+}
+
+static id<MTLRenderPipelineState> ensure_shadow_skinned_mesh_pipeline(void)
+{
+    if(s_shadow_skinned_mesh_pipeline)
+        return s_shadow_skinned_mesh_pipeline;
+    s_shadow_skinned_mesh_pipeline = build_shadow_skinned_mesh_pipeline();
+    return s_shadow_skinned_mesh_pipeline;
+}
+
 static void shadow_screen_probe_reset_frame(void);
 static void shadow_screen_probe_dump_if_requested(void);
 static void water_reflection_dump_finish_if_pending(void);
@@ -2671,6 +3090,8 @@ static void frame_begin(void)
     if(s_frame_command_buffer)
         return;
 
+    if(!s_skinned_mesh_cache_active)
+        skinned_mesh_cache_begin_frame();
     capture_maybe_start();
     update_drawable_size();
     if(!reserve_inflight_frame())
@@ -2784,6 +3205,7 @@ static void frame_present(void)
 {
     if(!s_frame_command_buffer) {
         present_clear();
+        skinned_mesh_cache_end_frame();
         return;
     }
 
@@ -2809,6 +3231,7 @@ static void frame_present(void)
     water_reflection_dump_finish_if_pending();
     capture_note_presented();
     reset_frame_state();
+    skinned_mesh_cache_end_frame();
 }
 
 static void frame_abort(void)
@@ -2818,6 +3241,7 @@ static void frame_abort(void)
     }
     reset_frame_state();
     release_inflight_frame();
+    skinned_mesh_cache_end_frame();
 }
 
 static bool shadow_enabled_for_draw(void)
@@ -2901,6 +3325,7 @@ static void shadow_pass_begin(const vec3_t *light_pos, const vec3_t *cam_pos, co
         return;
     if(!ensure_shadow_depth_texture() || !ensure_shadow_sampler())
         return;
+    skinned_mesh_cache_begin_frame();
     const char *owner_dump_path = getenv("PF_METAL_SHADOW_OWNER_DUMP_U32_PATH");
     bool owner_requested = (owner_dump_path && *owner_dump_path) || shadow_screen_probe_enabled();
     if(owner_requested && !ensure_shadow_owner_texture())
@@ -3266,11 +3691,114 @@ static void render_shadow_batched_anim_entities(const vec_ranim_t *ents)
     if(!mutable_ents)
         return;
 
-    for(int i = 0; i < vec_size(mutable_ents); i++) {
-        const struct ent_anim_rstate *curr = &vec_AT(mutable_ents, i);
-        set_current_anim_uid(curr->uid);
-        render_shadow_depth_draw(curr->render_private, &curr->model, curr->uid);
+    size_t nents = vec_size(mutable_ents);
+    if(s_shadow_owner_pass_active) {
+        for(int i = 0; i < nents; i++) {
+            const struct ent_anim_rstate *curr = &vec_AT(mutable_ents, i);
+            set_current_anim_uid(curr->uid);
+            render_shadow_depth_draw(curr->render_private, &curr->model, curr->uid);
+        }
+        return;
     }
+
+    bool *consumed = calloc(nents, sizeof(*consumed));
+    if(!consumed) {
+        for(int i = 0; i < nents; i++) {
+            const struct ent_anim_rstate *curr = &vec_AT(mutable_ents, i);
+            set_current_anim_uid(curr->uid);
+            render_shadow_depth_draw(curr->render_private, &curr->model, curr->uid);
+        }
+        return;
+    }
+
+    for(int i = 0; i < nents; i++) {
+        if(consumed[i])
+            continue;
+
+        const struct ent_anim_rstate *curr = &vec_AT(mutable_ents, i);
+        const struct render_private *priv = curr->render_private;
+        if(!priv || !priv->metal_is_anim_mesh || !priv->uses_pose_buffer
+        || !priv->metal_anim_verts || !priv->mesh.num_verts) {
+            consumed[i] = true;
+            set_current_anim_uid(curr->uid);
+            render_shadow_depth_draw(priv, &curr->model, curr->uid);
+            continue;
+        }
+
+        size_t group_count = 1;
+        size_t total_verts = priv->mesh.num_verts;
+        consumed[i] = true;
+
+        for(int j = i + 1; j < nents; j++) {
+            if(consumed[j])
+                continue;
+
+            const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
+            if(other->render_private != priv)
+                continue;
+
+            consumed[j] = true;
+            group_count++;
+            total_verts += priv->mesh.num_verts;
+        }
+
+        if(group_count == 1) {
+            set_current_anim_uid(curr->uid);
+            render_shadow_depth_draw(priv, &curr->model, curr->uid);
+            continue;
+        }
+
+        if(render_shadow_gpu_skinned_anim_batch(mutable_ents, nents, i, priv, group_count))
+            continue;
+
+        struct vertex *combined = malloc(total_verts * sizeof(*combined));
+        if(!combined) {
+            set_current_anim_uid(curr->uid);
+            render_shadow_depth_draw(priv, &curr->model, curr->uid);
+            for(int j = i + 1; j < nents; j++) {
+                const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
+                if(other->render_private != priv)
+                    continue;
+                set_current_anim_uid(other->uid);
+                render_shadow_depth_draw(priv, &other->model, other->uid);
+            }
+            continue;
+        }
+
+        bool ok = true;
+        size_t dst_idx = 0;
+        ok = append_skinned_anim_mesh(priv, curr->uid, &curr->model, combined, &dst_idx);
+        for(int j = i + 1; ok && j < nents; j++) {
+            const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
+            if(other->render_private != priv)
+                continue;
+            ok = append_skinned_anim_mesh(priv, other->uid, &other->model, combined, &dst_idx);
+        }
+
+        if(!ok) {
+            free(combined);
+            set_current_anim_uid(curr->uid);
+            render_shadow_depth_draw(priv, &curr->model, curr->uid);
+            for(int j = i + 1; j < nents; j++) {
+                const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
+                if(other->render_private != priv)
+                    continue;
+                set_current_anim_uid(other->uid);
+                render_shadow_depth_draw(priv, &other->model, other->uid);
+            }
+            continue;
+        }
+
+        mat4x4_t identity;
+        PFM_Mat4x4_Identity(&identity);
+        s_shadow_caster_stats.anim_draws += (unsigned)group_count;
+        s_shadow_caster_stats.anim_verts += dst_idx;
+        render_shadow_vertex_stream(combined, dst_idx * sizeof(*combined), dst_idx, &identity,
+            false, curr->uid);
+        free(combined);
+    }
+
+    free(consumed);
 }
 
 static MTLScissorRect scissor_rect_for_cmd(const struct nk_draw_command *cmd,
@@ -5236,6 +5764,286 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
                 vertexCount:priv->mesh.num_verts];
 }
 
+static bool fill_gpu_skinned_instance(uint32_t uid, const mat4x4_t *model,
+                                      struct metal_skinned_instance *instance,
+                                      matrix_float4x4 *skin_mats,
+                                      matrix_float4x4 *skin_normal_mats,
+                                      size_t max_mats,
+                                      size_t *mat_cursor)
+{
+    if(!model || !instance || !skin_mats || !skin_normal_mats || !mat_cursor)
+        return false;
+
+    const struct skeleton *skel = A_GetBindSkeleton(uid);
+    if(!skel || !skel->inv_bind_poses)
+        return false;
+
+    size_t njoints = 0;
+    mat4x4_t curr_pose[METAL_MAX_JOINTS];
+    A_GetCurrPoseMats(uid, &njoints, curr_pose);
+    if(!njoints)
+        return false;
+    if(njoints > METAL_MAX_JOINTS)
+        njoints = METAL_MAX_JOINTS;
+    if(*mat_cursor + njoints > max_mats)
+        return false;
+
+    mat4x4_t normal_model;
+    normal_transform_from_mat4(model, &normal_model);
+
+    size_t base = *mat_cursor;
+    *instance = (struct metal_skinned_instance){
+        .model = matrix_from_pf_mat4(model),
+        .normal_transform = matrix_from_pf_mat4(&normal_model),
+        .skin_params = {(uint32_t)base, (uint32_t)njoints, 0u, 0u},
+    };
+
+    for(size_t i = 0; i < njoints; i++) {
+        mat4x4_t skin_mat;
+        mat4x4_t skin_normal_mat;
+        mat4x4_t world_skin_mat;
+        mat4x4_t world_skin_normal_mat;
+        PFM_Mat4x4_Mult4x4(&curr_pose[i], &skel->inv_bind_poses[i], &skin_mat);
+        normal_transform_from_mat4(&skin_mat, &skin_normal_mat);
+        PFM_Mat4x4_Mult4x4((mat4x4_t *)model, &skin_mat, &world_skin_mat);
+        PFM_Mat4x4_Mult4x4((mat4x4_t *)model, &skin_normal_mat, &world_skin_normal_mat);
+        skin_mats[base + i] = matrix_from_pf_mat4(&world_skin_mat);
+        skin_normal_mats[base + i] = matrix_from_pf_mat4(&world_skin_normal_mat);
+    }
+
+    *mat_cursor += njoints;
+    return true;
+}
+
+static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int start,
+                                          const struct render_private *priv,
+                                          size_t group_count)
+{
+    if(!gpu_skinning_enabled() || !ents || !priv || !priv->metal_anim_verts
+    || !priv->metal_anim_verts_size || !priv->mesh.num_verts || !group_count)
+        return false;
+    if(!s_have_scene_view || !s_have_scene_proj)
+        return false;
+
+    struct render_private *mutable_priv = (struct render_private *)priv;
+    if(!(s_water_scene_pass_active && s_water_scene_encoder))
+        frame_begin();
+    id<MTLRenderCommandEncoder> encoder = active_scene_encoder();
+    if(!encoder)
+        return false;
+
+    bool depth_enabled = active_scene_depth_enabled();
+    id<MTLRenderPipelineState> pipeline = ensure_skinned_mesh_pipeline(false,
+        encoder == s_frame_encoder && frame_uses_msaa(), depth_enabled);
+    if(!pipeline)
+        return false;
+
+    size_t max_mats = group_count * METAL_MAX_JOINTS;
+    struct metal_skinned_instance *instances = calloc(group_count, sizeof(*instances));
+    matrix_float4x4 *skin_mats = malloc(max_mats * sizeof(*skin_mats));
+    matrix_float4x4 *skin_normal_mats = malloc(max_mats * sizeof(*skin_normal_mats));
+    if(!instances || !skin_mats || !skin_normal_mats) {
+        free(instances);
+        free(skin_mats);
+        free(skin_normal_mats);
+        return false;
+    }
+
+    size_t inst_idx = 0;
+    size_t mat_cursor = 0;
+    for(int j = start; j < nents && inst_idx < group_count; j++) {
+        const struct ent_anim_rstate *curr = &vec_AT(ents, j);
+        if(curr->translucent || curr->render_private != priv)
+            continue;
+        if(!fill_gpu_skinned_instance(curr->uid, &curr->model, &instances[inst_idx],
+                                      skin_mats, skin_normal_mats, max_mats, &mat_cursor)) {
+            free(instances);
+            free(skin_mats);
+            free(skin_normal_mats);
+            return false;
+        }
+        inst_idx++;
+    }
+    if(inst_idx != group_count || !mat_cursor) {
+        free(instances);
+        free(skin_mats);
+        free(skin_normal_mats);
+        return false;
+    }
+
+    id<MTLTexture> texture_array = ensure_material_texture_array(mutable_priv);
+    id<MTLBuffer> vertex_buffer = ensure_persistent_vertex_buffer(
+        &mutable_priv->metal_anim_vertex_buffer,
+        priv->metal_anim_verts,
+        priv->metal_anim_verts_size);
+    id<MTLBuffer> instance_buffer = [s_device newBufferWithBytes:instances
+        length:inst_idx * sizeof(*instances) options:MTLResourceStorageModeShared];
+    id<MTLBuffer> skin_buffer = [s_device newBufferWithBytes:skin_mats
+        length:mat_cursor * sizeof(*skin_mats) options:MTLResourceStorageModeShared];
+    id<MTLBuffer> skin_normal_buffer = [s_device newBufferWithBytes:skin_normal_mats
+        length:mat_cursor * sizeof(*skin_normal_mats) options:MTLResourceStorageModeShared];
+    free(instances);
+    free(skin_mats);
+    free(skin_normal_mats);
+    if(!vertex_buffer || !instance_buffer || !skin_buffer || !skin_normal_buffer)
+        return false;
+
+    mat4x4_t identity;
+    PFM_Mat4x4_Identity(&identity);
+    struct metal_static_mesh_uniforms uniforms = {
+        .model = matrix_from_pf_mat4(&identity),
+        .normal_transform = matrix_from_pf_mat4(&identity),
+        .view = s_scene_view,
+        .proj = s_scene_proj,
+        .light_space_transform = s_shadow_light_space,
+        .view_pos = {s_scene_view_pos.x, s_scene_view_pos.y, s_scene_view_pos.z, 1.0f},
+        .ambient_color = {s_light_ambient.x, s_light_ambient.y, s_light_ambient.z, 1.0f},
+        .light_color = {s_light_color.x, s_light_color.y, s_light_color.z, 1.0f},
+        .light_pos = {s_light_pos.x, s_light_pos.y, s_light_pos.z, 1.0f},
+        .effect_params = {
+            (float)mutable_priv->metal_material_texture_count,
+            raw_material_debug_enabled() ? 1.0f : 0.0f,
+            1.0f,
+            0.0f,
+        },
+        .shadow_params = {
+            shadow_enabled_for_draw() ? 1.0f : 0.0f,
+            0.002f,
+            0.55f,
+            0.0f,
+        },
+        .clip_params = current_water_clip_params(),
+    };
+    fill_material_uniforms(priv, uniforms.material_diffuse, uniforms.material_ambient, uniforms.material_specular);
+
+    id<MTLBuffer> uniform_buffer = [s_device newBufferWithBytes:&uniforms
+        length:sizeof(uniforms) options:MTLResourceStorageModeShared];
+    if(!uniform_buffer)
+        return false;
+
+    [encoder setRenderPipelineState:pipeline];
+    if(depth_enabled) {
+        id<MTLDepthStencilState> depth_state = ensure_depth_state(true);
+        if(depth_state)
+            [encoder setDepthStencilState:depth_state];
+    } else {
+        [encoder setDepthStencilState:nil];
+    }
+    [encoder setCullMode:mutable_priv->metal_materials_have_cutout_alpha ? MTLCullModeNone : MTLCullModeBack];
+    [encoder setFrontFacingWinding:MTLWindingClockwise];
+    [encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
+    [encoder setVertexBuffer:uniform_buffer offset:0 atIndex:1];
+    [encoder setVertexBuffer:instance_buffer offset:0 atIndex:2];
+    [encoder setVertexBuffer:skin_buffer offset:0 atIndex:3];
+    [encoder setVertexBuffer:skin_normal_buffer offset:0 atIndex:4];
+    [encoder setFragmentBuffer:uniform_buffer offset:0 atIndex:1];
+    if(texture_array && ensure_material_sampler()) {
+        [encoder setFragmentTexture:texture_array atIndex:0];
+        [encoder setFragmentSamplerState:s_material_sampler atIndex:0];
+    }
+    if(shadow_enabled_for_draw()) {
+        [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
+        [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
+    }
+    bind_shadow_screen_probe_resources(encoder, 2, 2, 3);
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                vertexStart:0
+                vertexCount:priv->mesh.num_verts
+              instanceCount:inst_idx];
+    return true;
+}
+
+static bool render_shadow_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int start,
+                                                 const struct render_private *priv,
+                                                 size_t group_count)
+{
+    if(!gpu_skinning_enabled() || !ents || !priv || !priv->metal_anim_verts
+    || !priv->metal_anim_verts_size || !priv->mesh.num_verts || !group_count)
+        return false;
+    if(!s_shadow_pass_active || s_shadow_owner_pass_active || !s_shadow_encoder)
+        return false;
+
+    id<MTLRenderPipelineState> pipeline = ensure_shadow_skinned_mesh_pipeline();
+    if(!pipeline)
+        return false;
+
+    struct render_private *mutable_priv = (struct render_private *)priv;
+    size_t max_mats = group_count * METAL_MAX_JOINTS;
+    struct metal_skinned_instance *instances = calloc(group_count, sizeof(*instances));
+    matrix_float4x4 *skin_mats = malloc(max_mats * sizeof(*skin_mats));
+    matrix_float4x4 *skin_normal_mats = malloc(max_mats * sizeof(*skin_normal_mats));
+    if(!instances || !skin_mats || !skin_normal_mats) {
+        free(instances);
+        free(skin_mats);
+        free(skin_normal_mats);
+        return false;
+    }
+
+    size_t inst_idx = 0;
+    size_t mat_cursor = 0;
+    for(int j = start; j < nents && inst_idx < group_count; j++) {
+        const struct ent_anim_rstate *curr = &vec_AT(ents, j);
+        if(curr->render_private != priv)
+            continue;
+        if(!fill_gpu_skinned_instance(curr->uid, &curr->model, &instances[inst_idx],
+                                      skin_mats, skin_normal_mats, max_mats, &mat_cursor)) {
+            free(instances);
+            free(skin_mats);
+            free(skin_normal_mats);
+            return false;
+        }
+        inst_idx++;
+    }
+    if(inst_idx != group_count || !mat_cursor) {
+        free(instances);
+        free(skin_mats);
+        free(skin_normal_mats);
+        return false;
+    }
+
+    id<MTLBuffer> vertex_buffer = ensure_persistent_vertex_buffer(
+        &mutable_priv->metal_anim_vertex_buffer,
+        priv->metal_anim_verts,
+        priv->metal_anim_verts_size);
+    id<MTLBuffer> instance_buffer = [s_device newBufferWithBytes:instances
+        length:inst_idx * sizeof(*instances) options:MTLResourceStorageModeShared];
+    id<MTLBuffer> skin_buffer = [s_device newBufferWithBytes:skin_mats
+        length:mat_cursor * sizeof(*skin_mats) options:MTLResourceStorageModeShared];
+    free(instances);
+    free(skin_mats);
+    free(skin_normal_mats);
+    if(!vertex_buffer || !instance_buffer || !skin_buffer)
+        return false;
+
+    mat4x4_t identity;
+    PFM_Mat4x4_Identity(&identity);
+    struct metal_shadow_uniforms uniforms = {
+        .model = matrix_from_pf_mat4(&identity),
+        .view = s_shadow_view,
+        .proj = s_shadow_proj,
+        .owner_params = {0u, 0u, 0u, 0u},
+    };
+    id<MTLBuffer> uniform_buffer = [s_device newBufferWithBytes:&uniforms
+        length:sizeof(uniforms) options:MTLResourceStorageModeShared];
+    if(!uniform_buffer)
+        return false;
+
+    [s_shadow_encoder setRenderPipelineState:pipeline];
+    [s_shadow_encoder setFrontFacingWinding:MTLWindingClockwise];
+    [s_shadow_encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
+    [s_shadow_encoder setVertexBuffer:uniform_buffer offset:0 atIndex:1];
+    [s_shadow_encoder setVertexBuffer:instance_buffer offset:0 atIndex:2];
+    [s_shadow_encoder setVertexBuffer:skin_buffer offset:0 atIndex:3];
+    [s_shadow_encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                         vertexStart:0
+                         vertexCount:priv->mesh.num_verts
+                       instanceCount:inst_idx];
+
+    s_shadow_caster_stats.anim_draws += (unsigned)inst_idx;
+    s_shadow_caster_stats.anim_verts += priv->mesh.num_verts * inst_idx;
+    return true;
+}
+
 static void render_world_colored_strip(const vec3_t *positions, size_t nverts, const vec3_t *color)
 {
     id<MTLRenderPipelineState> pipeline = nil;
@@ -6509,6 +7317,14 @@ static bool append_skinned_anim_mesh(const struct render_private *priv,
     if(!priv->metal_anim_verts || !priv->mesh.num_verts || !dst || !dst_idx)
         return false;
 
+    size_t cached_count = 0;
+    const struct vertex *cached = skinned_mesh_cache_lookup(priv, uid, model, &cached_count);
+    if(cached && cached_count) {
+        memcpy(&dst[*dst_idx], cached, cached_count * sizeof(*cached));
+        *dst_idx += cached_count;
+        return true;
+    }
+
     const struct skeleton *skel = A_GetBindSkeleton(uid);
     if(!skel || !skel->inv_bind_poses)
         return false;
@@ -6521,75 +7337,65 @@ static bool append_skinned_anim_mesh(const struct render_private *priv,
     if(njoints > METAL_MAX_JOINTS)
         njoints = METAL_MAX_JOINTS;
 
-    mat4x4_t skin_mats[METAL_MAX_JOINTS];
-    mat4x4_t skin_normal_mats[METAL_MAX_JOINTS];
+    mat4x4_t model_copy = *model;
+    mat4x4_t world_skin_mats[METAL_MAX_JOINTS];
+    mat4x4_t world_skin_normal_mats[METAL_MAX_JOINTS];
     for(size_t i = 0; i < njoints; i++) {
-        PFM_Mat4x4_Mult4x4(&curr_pose[i], &skel->inv_bind_poses[i], &skin_mats[i]);
-        normal_transform_from_mat4(&skin_mats[i], &skin_normal_mats[i]);
+        mat4x4_t skin_mat;
+        mat4x4_t skin_normal_mat;
+        PFM_Mat4x4_Mult4x4(&curr_pose[i], &skel->inv_bind_poses[i], &skin_mat);
+        normal_transform_from_mat4(&skin_mat, &skin_normal_mat);
+        PFM_Mat4x4_Mult4x4(&model_copy, &skin_mat, &world_skin_mats[i]);
+        PFM_Mat4x4_Mult4x4(&model_copy, &skin_normal_mat, &world_skin_normal_mats[i]);
     }
 
-    mat4x4_t model_copy = *model;
-
     struct anim_vert *src = priv->metal_anim_verts;
+    size_t out_start = *dst_idx;
     for(int i = 0; i < priv->mesh.num_verts; i++) {
         struct anim_vert *curr = &src[i];
-        vec4_t blended_pos = {0};
-        vec4_t blended_normal = {0};
+        vec3_t blended_pos = {0};
+        vec3_t blended_normal = {0};
         float total_weight = 0.0f;
         bool weighted = false;
 
         for(int j = 0; j < 6; j++)
             total_weight += curr->weights[j];
+        float inv_total_weight = total_weight > 0.0f ? 1.0f / total_weight : 0.0f;
 
         for(int j = 0; j < 6; j++) {
-            float weight = total_weight > 0.0f ? curr->weights[j] / total_weight : 0.0f;
+            float weight = curr->weights[j] * inv_total_weight;
             uint32_t joint_idx = curr->joint_indices[j];
             if(weight <= 0.0f || joint_idx >= njoints)
                 continue;
 
-            vec4_t in_pos = {curr->pos.x, curr->pos.y, curr->pos.z, 1.0f};
-            vec4_t out_pos = {0};
-            PFM_Mat4x4_Mult4x1(&skin_mats[joint_idx], &in_pos, &out_pos);
+            vec3_t out_pos = transform_point_with_mat4(&world_skin_mats[joint_idx], curr->pos);
             blended_pos.x += out_pos.x * weight;
             blended_pos.y += out_pos.y * weight;
             blended_pos.z += out_pos.z * weight;
-            blended_pos.w += out_pos.w * weight;
 
-            vec4_t in_normal = {curr->normal.x, curr->normal.y, curr->normal.z, 0.0f};
-            vec4_t out_normal = {0};
-            PFM_Mat4x4_Mult4x1(&skin_normal_mats[joint_idx], &in_normal, &out_normal);
+            vec3_t out_normal = transform_vector_with_mat4(&world_skin_normal_mats[joint_idx], curr->normal);
             blended_normal.x += out_normal.x * weight;
             blended_normal.y += out_normal.y * weight;
             blended_normal.z += out_normal.z * weight;
             weighted = true;
         }
 
-        vec3_t local_pos;
-        vec3_t local_normal;
+        struct vertex *out = &dst[(*dst_idx)++];
         if(weighted) {
-            local_pos = (vec3_t){blended_pos.x, blended_pos.y, blended_pos.z};
-            local_normal = (vec3_t){blended_normal.x, blended_normal.y, blended_normal.z};
-            if(PFM_Vec3_Len(&local_normal) > 0.0001f) {
-                PFM_Vec3_Normal(&local_normal, &local_normal);
-            }else{
-                local_normal = curr->normal;
-            }
+            out->pos = (vec3_t){blended_pos.x, blended_pos.y, blended_pos.z};
+            out->normal = (vec3_t){blended_normal.x, blended_normal.y, blended_normal.z};
+            if(!normalize_vec3_fast(&out->normal))
+                out->normal = transform_normal_with_mat4(&model_copy, curr->normal);
         }else{
-            local_pos = curr->pos;
-            local_normal = curr->normal;
+            out->pos = transform_point_with_mat4(&model_copy, curr->pos);
+            out->normal = transform_normal_with_mat4(&model_copy, curr->normal);
         }
 
-        vec4_t in_pos = {local_pos.x, local_pos.y, local_pos.z, 1.0f};
-        vec4_t out_pos = {0};
-        PFM_Mat4x4_Mult4x1(&model_copy, &in_pos, &out_pos);
-
-        struct vertex *out = &dst[(*dst_idx)++];
-        out->pos = (vec3_t){out_pos.x, out_pos.y, out_pos.z};
         out->uv = curr->uv;
         out->material_idx = curr->material_idx;
-        out->normal = transform_normal_with_mat4(&model_copy, local_normal);
     }
 
+    skinned_mesh_cache_store(priv, uid, model, &dst[out_start], *dst_idx - out_start);
     return true;
 }
 
@@ -6839,6 +7645,9 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
             render_skinned_mesh_draw(priv, &curr->model, false);
             continue;
         }
+
+        if(render_gpu_skinned_anim_batch(mutable_ents, nents, i, priv, group_count))
+            continue;
 
         struct vertex *combined = malloc(total_verts * sizeof(*combined));
         if(!combined) {
@@ -7262,6 +8071,7 @@ static void render_destroy_ctx(void)
 {
     frame_abort();
     shadow_pass_end();
+    skinned_mesh_cache_destroy();
     release_scene_resources();
     release_ui_resources();
 #if !OS_OBJECT_USE_OBJC

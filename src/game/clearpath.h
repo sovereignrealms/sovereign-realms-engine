@@ -61,6 +61,7 @@ VEC_IMPL(static inline, cp_ent, struct cp_ent)
 
 void G_ClearPath_Init(const struct map *map);
 void G_ClearPath_Shutdown(void);
+void G_ClearPath_WriteStats(void);
 bool G_ClearPath_ShouldSaveDebug(uint32_t ent_uid);
 
 vec2_t G_ClearPath_NewVelocity(struct cp_ent ent,
@@ -71,4 +72,3 @@ vec2_t G_ClearPath_NewVelocity(struct cp_ent ent,
                                bool save_debug);
 
 #endif
-

@@ -64,6 +64,7 @@ struct render_private{
     bool                metal_is_anim_mesh;
     void               *metal_anim_verts;
     size_t              metal_anim_verts_size;
+    void               *metal_anim_vertex_buffer;
     void               *metal_material_texture_array;
     size_t              metal_material_texture_count;
     bool                metal_materials_have_cutout_alpha;

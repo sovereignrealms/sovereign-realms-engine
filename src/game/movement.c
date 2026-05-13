@@ -69,6 +69,8 @@
 
 #include <assert.h>
 #include <SDL.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static int hz_count(enum movement_hz hz);
 
@@ -448,6 +450,60 @@ static bool                    s_move_tick_queued = false;
 static uint32_t                s_tick_task_tid = NULL_TID;
 static struct future           s_tick_task_future;
 
+struct movement_state_stats{
+    uint64_t work_items;
+    uint64_t clearpath_calls;
+    uint64_t clearpath_skips;
+    uint64_t cadence_skips;
+    uint64_t zero_vpref;
+    uint64_t assignment_waits;
+    uint64_t dyn_neighbs;
+    uint64_t stat_neighbs;
+    uint64_t max_total_neighbs;
+};
+
+enum movement_timing_stage{
+    MOVEMENT_TIMING_PREP_TICK,
+    MOVEMENT_TIMING_UPDATE_MAP,
+    MOVEMENT_TIMING_PREPARE_WORK,
+    MOVEMENT_TIMING_SUBMIT_MOVE_WORK,
+    MOVEMENT_TIMING_NAV_SUBMIT,
+    MOVEMENT_TIMING_ASYNC_FIELDS,
+    MOVEMENT_TIMING_DESIRED_VELOCITY,
+    MOVEMENT_TIMING_VPREF,
+    MOVEMENT_TIMING_NEIGHBOUR_LOOKUP,
+    MOVEMENT_TIMING_CLEARPATH_CALL,
+    MOVEMENT_TIMING_VELOCITY_SOLVE,
+    MOVEMENT_TIMING_GPU_WAIT,
+    MOVEMENT_TIMING_GPU_COPY,
+    MOVEMENT_TIMING_STATE_UPDATES,
+    MOVEMENT_TIMING_STAGE_COUNT
+};
+
+struct movement_stage_stats{
+    uint64_t count;
+    uint64_t total_us;
+    uint64_t max_us;
+    uint64_t max_tick;
+};
+
+struct movement_stats{
+    bool enabled;
+    const char *path;
+    uint64_t ticks;
+    uint64_t max_tick_work_items;
+    uint64_t submitted_work_items;
+    uint64_t clearpath_calls;
+    uint64_t clearpath_skips;
+    struct movement_state_stats states[STATE_ARRIVING_TO_CELL + 1];
+    struct movement_stage_stats stages[MOVEMENT_TIMING_STAGE_COUNT];
+};
+
+static struct movement_stats   s_move_stats;
+static size_t                  s_move_tick_work_items;
+static size_t                  s_seek_clearpath_cadence = 1;
+static size_t                  s_seek_clearpath_min_work_items = 0;
+
 static const char *s_state_str[] = {
     [STATE_MOVING]              = STR(STATE_MOVING),
     [STATE_MOVING_IN_FORMATION] = STR(STATE_MOVING_IN_FORMATION),
@@ -459,6 +515,260 @@ static const char *s_state_str[] = {
     [STATE_TURNING]             = STR(STATE_TURNING),
     [STATE_ARRIVING_TO_CELL]    = STR(STATE_ARRIVING_TO_CELL)
 };
+
+static const char *s_movement_stage_str[] = {
+    [MOVEMENT_TIMING_PREP_TICK]        = "prep_tick",
+    [MOVEMENT_TIMING_UPDATE_MAP]       = "update_map",
+    [MOVEMENT_TIMING_PREPARE_WORK]     = "prepare_work",
+    [MOVEMENT_TIMING_SUBMIT_MOVE_WORK] = "submit_move_work",
+    [MOVEMENT_TIMING_NAV_SUBMIT]       = "nav_submit",
+    [MOVEMENT_TIMING_ASYNC_FIELDS]     = "async_fields",
+    [MOVEMENT_TIMING_DESIRED_VELOCITY] = "desired_velocity",
+    [MOVEMENT_TIMING_VPREF]            = "vpref",
+    [MOVEMENT_TIMING_NEIGHBOUR_LOOKUP] = "neighbour_lookup",
+    [MOVEMENT_TIMING_CLEARPATH_CALL]   = "clearpath_call",
+    [MOVEMENT_TIMING_VELOCITY_SOLVE]   = "velocity_solve",
+    [MOVEMENT_TIMING_GPU_WAIT]         = "gpu_wait",
+    [MOVEMENT_TIMING_GPU_COPY]         = "gpu_copy",
+    [MOVEMENT_TIMING_STATE_UPDATES]    = "state_updates"
+};
+
+static double movement_stats_avg(uint64_t total, uint64_t count)
+{
+    if(count == 0)
+        return 0.0;
+    return (double)total / (double)count;
+}
+
+static inline void movement_stats_add(uint64_t *field, uint64_t value)
+{
+    if(s_move_stats.enabled && value != 0)
+        __sync_fetch_and_add(field, value);
+}
+
+static inline void movement_stats_max(uint64_t *field, uint64_t value)
+{
+    uint64_t curr;
+    do{
+        curr = __sync_fetch_and_add(field, 0);
+        if(curr >= value)
+            return;
+    }while(!__sync_bool_compare_and_swap(field, curr, value));
+}
+
+static uint64_t movement_timing_begin(void)
+{
+    if(!s_move_stats.enabled)
+        return 0;
+    return SDL_GetPerformanceCounter();
+}
+
+static uint64_t movement_timing_elapsed_us(uint64_t begin)
+{
+    uint64_t elapsed = SDL_GetPerformanceCounter() - begin;
+    uint64_t freq = SDL_GetPerformanceFrequency();
+    if(freq == 0)
+        return 0;
+    return (elapsed * 1000000ull) / freq;
+}
+
+static void movement_stats_timing(enum movement_timing_stage stage, uint64_t begin)
+{
+    if(!s_move_stats.enabled || begin == 0)
+        return;
+
+    uint64_t elapsed_us = movement_timing_elapsed_us(begin);
+    struct movement_stage_stats *stats = &s_move_stats.stages[stage];
+    movement_stats_add(&stats->count, 1);
+    movement_stats_add(&stats->total_us, elapsed_us);
+
+    uint64_t curr;
+    do{
+        curr = __sync_fetch_and_add(&stats->max_us, 0);
+        if(curr >= elapsed_us)
+            return;
+    }while(!__sync_bool_compare_and_swap(&stats->max_us, curr, elapsed_us));
+    stats->max_tick = __sync_fetch_and_add(&s_move_stats.ticks, 0);
+}
+
+static size_t movement_parse_size_env(const char *name, size_t fallback)
+{
+    const char *value = getenv(name);
+    if(!value || !value[0])
+        return fallback;
+
+    char *end = NULL;
+    unsigned long parsed = strtoul(value, &end, 10);
+    if(end == value || parsed == 0)
+        return fallback;
+    return parsed;
+}
+
+static void movement_config_init(void)
+{
+    s_seek_clearpath_cadence = movement_parse_size_env(
+        "PF_MOVEMENT_SEEK_CLEARPATH_CADENCE", 1);
+    s_seek_clearpath_min_work_items = movement_parse_size_env(
+        "PF_MOVEMENT_SEEK_CLEARPATH_MIN_WORK_ITEMS", 0);
+}
+
+static void movement_stats_init(void)
+{
+    memset(&s_move_stats, 0, sizeof(s_move_stats));
+
+    const char *path = getenv("PF_MOVEMENT_STATS_PATH");
+    if(path && path[0]) {
+        s_move_stats.enabled = true;
+        s_move_stats.path = path;
+    }
+}
+
+static void movement_stats_write(void)
+{
+    if(!s_move_stats.enabled || !s_move_stats.path)
+        return;
+
+    FILE *fp = fopen(s_move_stats.path, "w");
+    if(!fp) {
+        fprintf(stderr, "PF_MOVEMENT_STATS_PATH failed to open: %s\n",
+            s_move_stats.path);
+        return;
+    }
+
+    fprintf(fp, "{\n");
+    fprintf(fp, "  \"ticks\": %llu,\n", (unsigned long long)s_move_stats.ticks);
+    fprintf(fp, "  \"max_tick_work_items\": %llu,\n",
+        (unsigned long long)s_move_stats.max_tick_work_items);
+    fprintf(fp, "  \"submitted_work_items\": %llu,\n",
+        (unsigned long long)s_move_stats.submitted_work_items);
+    fprintf(fp, "  \"clearpath_calls\": %llu,\n",
+        (unsigned long long)s_move_stats.clearpath_calls);
+    fprintf(fp, "  \"clearpath_skips\": %llu,\n",
+        (unsigned long long)s_move_stats.clearpath_skips);
+    fprintf(fp, "  \"seek_clearpath_cadence\": %llu,\n",
+        (unsigned long long)s_seek_clearpath_cadence);
+    fprintf(fp, "  \"seek_clearpath_min_work_items\": %llu,\n",
+        (unsigned long long)s_seek_clearpath_min_work_items);
+    fprintf(fp, "  \"stage_timings\": {\n");
+    for(int i = 0; i < MOVEMENT_TIMING_STAGE_COUNT; i++) {
+        struct movement_stage_stats *stats = &s_move_stats.stages[i];
+        double avg_ms = (stats->count > 0)
+            ? ((double)stats->total_us / 1000.0) / (double)stats->count
+            : 0.0;
+        fprintf(fp, "    \"%s\": {\n", s_movement_stage_str[i]);
+        fprintf(fp, "      \"count\": %llu,\n", (unsigned long long)stats->count);
+        fprintf(fp, "      \"total_ms\": %.6f,\n", (double)stats->total_us / 1000.0);
+        fprintf(fp, "      \"avg_ms\": %.6f,\n", avg_ms);
+        fprintf(fp, "      \"max_ms\": %.6f,\n", (double)stats->max_us / 1000.0);
+        fprintf(fp, "      \"max_tick\": %llu\n", (unsigned long long)stats->max_tick);
+        fprintf(fp, "    }%s\n", (i == MOVEMENT_TIMING_STAGE_COUNT - 1) ? "" : ",");
+    }
+    fprintf(fp, "  },\n");
+    fprintf(fp, "  \"states\": {\n");
+    for(int i = 0; i <= STATE_ARRIVING_TO_CELL; i++) {
+        struct movement_state_stats *stats = &s_move_stats.states[i];
+        fprintf(fp, "    \"%s\": {\n", s_state_str[i]);
+        fprintf(fp, "      \"work_items\": %llu,\n", (unsigned long long)stats->work_items);
+        fprintf(fp, "      \"clearpath_calls\": %llu,\n",
+            (unsigned long long)stats->clearpath_calls);
+        fprintf(fp, "      \"clearpath_skips\": %llu,\n",
+            (unsigned long long)stats->clearpath_skips);
+        fprintf(fp, "      \"cadence_skips\": %llu,\n",
+            (unsigned long long)stats->cadence_skips);
+        fprintf(fp, "      \"zero_vpref\": %llu,\n", (unsigned long long)stats->zero_vpref);
+        fprintf(fp, "      \"assignment_waits\": %llu,\n",
+            (unsigned long long)stats->assignment_waits);
+        fprintf(fp, "      \"dynamic_neighbours\": %llu,\n",
+            (unsigned long long)stats->dyn_neighbs);
+        fprintf(fp, "      \"static_neighbours\": %llu,\n",
+            (unsigned long long)stats->stat_neighbs);
+        fprintf(fp, "      \"max_total_neighbours\": %llu,\n",
+            (unsigned long long)stats->max_total_neighbs);
+        fprintf(fp, "      \"avg_total_neighbours_per_call\": %.6f\n",
+            movement_stats_avg(stats->dyn_neighbs + stats->stat_neighbs,
+                stats->clearpath_calls));
+        fprintf(fp, "    }%s\n", (i == STATE_ARRIVING_TO_CELL) ? "" : ",");
+    }
+    fprintf(fp, "  }\n");
+    fprintf(fp, "}\n");
+    fclose(fp);
+
+    fprintf(stderr, "PF_MOVEMENT_STATS wrote %s\n", s_move_stats.path);
+}
+
+static void movement_stats_tick(void)
+{
+    movement_stats_add(&s_move_stats.ticks, 1);
+}
+
+static void movement_stats_submit(enum arrival_state state)
+{
+    s_move_tick_work_items++;
+    movement_stats_max(&s_move_stats.max_tick_work_items, s_move_tick_work_items);
+
+    if(!s_move_stats.enabled)
+        return;
+
+    movement_stats_add(&s_move_stats.submitted_work_items, 1);
+    movement_stats_add(&s_move_stats.states[state].work_items, 1);
+}
+
+static void movement_stats_clearpath(enum arrival_state state, bool zero_vpref,
+                                     bool assignment_wait, size_t dyn_count,
+                                     size_t stat_count)
+{
+    if(!s_move_stats.enabled)
+        return;
+
+    struct movement_state_stats *stats = &s_move_stats.states[state];
+    uint64_t total_neighbs = dyn_count + stat_count;
+
+    movement_stats_add(&s_move_stats.clearpath_calls, 1);
+    movement_stats_add(&stats->clearpath_calls, 1);
+    movement_stats_add(&stats->dyn_neighbs, dyn_count);
+    movement_stats_add(&stats->stat_neighbs, stat_count);
+    movement_stats_max(&stats->max_total_neighbs, total_neighbs);
+    if(zero_vpref)
+        movement_stats_add(&stats->zero_vpref, 1);
+    if(assignment_wait)
+        movement_stats_add(&stats->assignment_waits, 1);
+}
+
+static void movement_stats_skip_clearpath(enum arrival_state state, bool zero_vpref,
+                                          bool assignment_wait, bool cadence_skip)
+{
+    if(!s_move_stats.enabled)
+        return;
+
+    struct movement_state_stats *stats = &s_move_stats.states[state];
+    movement_stats_add(&s_move_stats.clearpath_skips, 1);
+    movement_stats_add(&stats->clearpath_skips, 1);
+    if(cadence_skip)
+        movement_stats_add(&stats->cadence_skips, 1);
+    if(zero_vpref)
+        movement_stats_add(&stats->zero_vpref, 1);
+    if(assignment_wait)
+        movement_stats_add(&stats->assignment_waits, 1);
+}
+
+static bool should_skip_seek_clearpath(uint32_t uid, const struct movestate *ms,
+                                       vec2_t vpref, bool save_debug)
+{
+    vec2_t curr_vel = ms->velocity;
+    uint64_t tick = __sync_fetch_and_add(&s_move_stats.ticks, 0);
+
+    if(s_seek_clearpath_cadence <= 1 || save_debug)
+        return false;
+    if(s_seek_clearpath_min_work_items > 0
+    && s_move_tick_work_items < s_seek_clearpath_min_work_items)
+        return false;
+    if(PFM_Vec2_Len(&vpref) < EPSILON)
+        return false;
+    if(PFM_Vec2_Len(&curr_vel) < EPSILON)
+        return false;
+
+    return ((tick + uid) % s_seek_clearpath_cadence) != 0;
+}
 
 /*****************************************************************************/
 /* STATIC FUNCTIONS                                                          */
@@ -3003,10 +3313,13 @@ static void move_velocity_work(int begin_idx, int end_idx)
 
         const struct movestate *ms = movestate_get(in->ent_uid);
         const struct flock *flock = flock_for_ent(in->ent_uid);
+        enum arrival_state state = ms->state;
+        bool assignment_wait = false;
 
         /* Compute the preferred velocity */
+        uint64_t stage_begin = movement_timing_begin();
         vec2_t vpref = (vec2_t){NAN, NAN};
-        switch(ms->state) {
+        switch(state) {
         case STATE_TURNING:
             vpref = (vec2_t){0.0f, 0.0f};
             break;
@@ -3018,6 +3331,7 @@ static void move_velocity_work(int begin_idx, int end_idx)
             assert(flock);
             if(!in->fstate.assignment_ready) {
                 vpref = (vec2_t){0.0f, 0.0f};
+                assignment_wait = true;
                 break;
             }
             vpref = cell_arrival_seek_vpref(in->ent_uid, in->cell_pos, in->speed,
@@ -3030,6 +3344,7 @@ static void move_velocity_work(int begin_idx, int end_idx)
             assert(flock);
             if(!in->fstate.assignment_ready) {
                 vpref = (vec2_t){0.0f, 0.0f};
+                assignment_wait = true;
                 break;
             }
             vpref = formation_seek_vpref(in->ent_uid, flock, in->speed, 
@@ -3045,13 +3360,36 @@ static void move_velocity_work(int begin_idx, int end_idx)
                 in->ent_des_v, in->has_dest_los, in->speed);
         }
         assert(vpref.x != NAN && vpref.z != NAN);
+        movement_stats_timing(MOVEMENT_TIMING_VPREF, stage_begin);
+
+        bool zero_vpref = PFM_Vec2_Len(&vpref) < EPSILON;
+        if(state == STATE_TURNING && zero_vpref) {
+            movement_stats_skip_clearpath(state, true, assignment_wait, false);
+            out->ent_uid = in->ent_uid;
+            out->ent_vel = (vec2_t){0.0f, 0.0f};
+            continue;
+        }
+        if(state == STATE_SEEK_ENEMIES
+        && should_skip_seek_clearpath(in->ent_uid, ms, vpref, in->save_debug)) {
+            movement_stats_skip_clearpath(state, zero_vpref, assignment_wait, true);
+            out->ent_uid = in->ent_uid;
+            out->ent_vel = ms->velocity;
+            vec2_truncate(&out->ent_vel, ms->max_speed / hz_count(s_move_work.hz));
+            continue;
+        }
 
         /* Find the entity's neighbours */
+        stage_begin = movement_timing_begin();
         find_neighbours(in->ent_uid, in->dyn_neighbs, in->stat_neighbs);
+        movement_stats_timing(MOVEMENT_TIMING_NEIGHBOUR_LOOKUP, stage_begin);
+        movement_stats_clearpath(state, zero_vpref, assignment_wait,
+            vec_size(in->dyn_neighbs), vec_size(in->stat_neighbs));
 
         /* Compute the velocity constrainted by potential collisions */
+        stage_begin = movement_timing_begin();
         vec2_t new_vel = G_ClearPath_NewVelocity(in->cp_ent, in->ent_uid, 
             vpref, *in->dyn_neighbs, *in->stat_neighbs, in->save_debug);
+        movement_stats_timing(MOVEMENT_TIMING_CLEARPATH_CALL, stage_begin);
 
         out->ent_uid = in->ent_uid;
         out->ent_vel = new_vel;
@@ -3791,21 +4129,36 @@ static void copy_gpu_results(void)
 
 static struct result navigation_tick_task(void *arg)
 {
+    uint64_t begin = movement_timing_begin();
     compute_async_fields();
+    movement_stats_timing(MOVEMENT_TIMING_ASYNC_FIELDS, begin);
+
+    begin = movement_timing_begin();
     compute_desired_velocity();
+    movement_stats_timing(MOVEMENT_TIMING_DESIRED_VELOCITY, begin);
+
+    begin = movement_timing_begin();
     fork_join_velocity_computations();
+    movement_stats_timing(MOVEMENT_TIMING_VELOCITY_SOLVE, begin);
 
     if(s_move_work.type == WORK_TYPE_GPU) {
 
         uint32_t period_ms = (1.0f / hz_count(s_move_work.hz)) * 1000;
+        begin = movement_timing_begin();
         await_gpu_completion(period_ms);
         move_complete_gpu_velocity_work();
 
         await_gpu_download();
+        movement_stats_timing(MOVEMENT_TIMING_GPU_WAIT, begin);
+
+        begin = movement_timing_begin();
         copy_gpu_results();
+        movement_stats_timing(MOVEMENT_TIMING_GPU_COPY, begin);
     }
 
+    begin = movement_timing_begin();
     fork_join_state_updates();
+    movement_stats_timing(MOVEMENT_TIMING_STATE_UPDATES, begin);
     return NULL_RESULT;
 }
 
@@ -3813,21 +4166,31 @@ static void move_do_tick(enum eventtype curr_event, enum movement_hz hz)
 {
     ASSERT_IN_MAIN_THREAD();
     PERF_PUSH("movement::tick");
+    movement_config_init();
+    s_move_tick_work_items = 0;
+    movement_stats_tick();
 
+    uint64_t begin = movement_timing_begin();
     move_consume_work_results();
     move_handle_hz_update(curr_event);
     move_process_cmds();
     G_SwapFieldCaches(s_move_work.gamestate.map);
     move_release_gamestate();
     disband_empty_flocks();
+    movement_stats_timing(MOVEMENT_TIMING_PREP_TICK, begin);
 
     /* Run the navigation updates synchronous to the movement tick */
+    begin = movement_timing_begin();
     G_UpdateMap();
+    movement_stats_timing(MOVEMENT_TIMING_UPDATE_MAP, begin);
 
+    begin = movement_timing_begin();
     move_prepare_work(hz);
     move_copy_gamestate();
+    movement_stats_timing(MOVEMENT_TIMING_PREPARE_WORK, begin);
 
     PERF_PUSH("submit move work");
+    begin = movement_timing_begin();
     uint32_t curr;
     kh_foreach_key(s_entity_state_table, curr, {
 
@@ -3836,6 +4199,8 @@ static void move_do_tick(enum eventtype curr_event, enum movement_hz hz)
 
         if(ent_still(ms))
             continue;
+
+        movement_stats_submit(ms->state);
 
         struct flock *flock = flock_for_ent(curr);
         vec_cp_ent_t *dyn, *stat;
@@ -3909,9 +4274,12 @@ static void move_do_tick(enum eventtype curr_event, enum movement_hz hz)
             .cell_arrival_vdes = cell_arrival_vdes
         });
     });
+    movement_stats_timing(MOVEMENT_TIMING_SUBMIT_MOVE_WORK, begin);
     PERF_POP();
 
+    begin = movement_timing_begin();
     nav_tick_submit_work();
+    movement_stats_timing(MOVEMENT_TIMING_NAV_SUBMIT, begin);
     PERF_POP();
 }
 
@@ -3974,6 +4342,9 @@ static void nav_cancel_gpu_work(void)
 bool G_Move_Init(const struct map *map)
 {
     assert(map);
+    movement_config_init();
+    movement_stats_init();
+
     if(NULL == (s_entity_state_table = kh_init(state))) {
         return false;
     }
@@ -4020,6 +4391,8 @@ bool G_Move_Init(const struct map *map)
 
 void G_Move_Shutdown(void)
 {
+    movement_stats_write();
+
     if(nav_tick_finish_work() == WORK_INCOMPLETE) {
         nav_cancel_gpu_work();
     }
@@ -4047,6 +4420,11 @@ void G_Move_Shutdown(void)
     queue_cmd_destroy(&s_move_commands);
     stalloc_destroy(&s_move_work.mem);
     kh_destroy(state, s_entity_state_table);
+}
+
+void G_Move_WriteStats(void)
+{
+    movement_stats_write();
 }
 
 bool G_Move_HasWork(void)

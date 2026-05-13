@@ -180,6 +180,189 @@ Current implementation status:
   scripted-AI decision depth in Metal: resource shortfall, population block,
   house response, training, attack readiness, attack order, and decision-log
   snapshots.
+- `scripts/sovereign/systems/skirmish.py` now includes `BuildOrderPlanner`, a
+  deterministic first build-order loop that gathers missing resources, adds a
+  house when population is tight, trains a militia wave, chooses a priority
+  target, and launches the attack.
+- `scripts/macos/pf_sovereign_ai_build_order_probe.py` verifies that loop in
+  Metal, then saves and reloads the session to prove scenario state, combat HP,
+  victory progress, production queue state, research state, and queued-unit
+  continuation survive restore.
+- `scripts/sovereign/systems/skirmish.py` now includes tactical scout-report
+  and threat-response helpers for classifying nearby enemy units around
+  defended assets.
+- `scripts/macos/pf_sovereign_ai_threat_response_probe.py` verifies a Metal
+  fixture where an enemy scout detects a nearby player militia, recovers
+  resources, builds population room, trains defenders, launches a defense
+  response, and confirms defenders move toward the threat.
+- `scripts/sovereign/systems/skirmish.py` now includes `ThreatMemory`,
+  `ScoutingRoutePlanner`, and `MemoryResponsePlanner` so scouting can follow
+  route waypoints, remember last-known threats after visibility is lost, and
+  adapt response training toward remembered map positions.
+- `scripts/macos/pf_sovereign_ai_scout_memory_probe.py` verifies route
+  scouting, remembered threat persistence without current visibility,
+  memory-driven income/house/defender training, defense launch, and scout plus
+  defender motion in Metal.
+- `scripts/sovereign/ai_memory_restore.py` restores saved AI threat memory
+  after a native Python 3 session reload and re-drives the memory response
+  planner from the saved state.
+- `scripts/macos/pf_sovereign_ai_memory_save_load_probe.py` verifies native
+  `.pfsave` persistence for AI memory, outnumbered regroup, resource/population
+  recovery, defender training, and remembered-position defense response.
+- `scripts/sovereign/systems/skirmish.py` now includes
+  `AdaptiveMemoryStrategyPlanner`, which schedules scout-route refreshes,
+  picks a response unit from remembered threat role, regroups while
+  outnumbered, trains the selected counter unit, responds to the remembered
+  position, and launches a counterattack when enough units are ready.
+- `scripts/macos/pf_sovereign_ai_adaptive_strategy_probe.py` verifies that
+  remembered military threats drive archer production, scheduled scouting,
+  retreat/regroup, response launch, and counterattack motion in Metal.
+- `scripts/sovereign/systems/skirmish.py` now includes macro-strategy
+  difficulty profiles plus `StrategicMacroPlanner`, which scores economy versus
+  military pressure, expands with a second base when economy wins, recovers
+  military resources when threat pressure wins, trains the chosen unit type,
+  and launches a strategic attack.
+- `scripts/macos/pf_sovereign_ai_macro_strategy_probe.py` verifies `booming`
+  economy expansion, `hard` military weighting, second-base placement,
+  strategic archer training, and attack movement in Metal.
+- `scripts/sovereign/systems/skirmish.py` now includes `MapControlEvaluator`
+  and `MapControlStrategyPlanner`, which score named control points, apply
+  difficulty-profile attack/retreat thresholds, retreat/regroup when control is
+  poor, recover through income/population, train the preferred counter unit,
+  and attack when army and timing scores are ready.
+- `scripts/macos/pf_sovereign_ai_map_control_probe.py` verifies map-control
+  summaries, `hard` profile thresholds, retreat timing, resource/population
+  recovery, archer training, map-control attack timing, and attack movement in
+  Metal.
+- `scripts/sovereign/systems/skirmish.py` now includes
+  `BranchingStrategyPlanner`, which splits strategic branches across defense,
+  multi-base expansion, harassment training, and harassment launch without
+  rewriting engine combat or pathing.
+- `scripts/macos/pf_sovereign_ai_branching_strategy_probe.py` verifies a
+  longer Metal branch sequence: militia defense against a nearby threat,
+  resource recovery, two additional town centers, archer harassment training,
+  and separate defense/harassment movement.
+- `scripts/sovereign/systems/skirmish.py` difficulty profiles now carry
+  personality IDs, expansion target counts, harassment cadence, max harassment
+  waves, and target-role priorities. `BranchingStrategyPlanner.from_snapshot()`
+  restores that branch state after native session load.
+- `scripts/sovereign/ai_branching_restore.py` and
+  `scripts/macos/pf_sovereign_ai_personality_save_load_probe.py` verify a hard
+  pressure personality launching harassment, saving during its cadence window,
+  restoring the cooldown hold, and continuing into a second harassment wave.
+- `BranchingStrategyPlanner` now defaults harassment composition from the
+  difficulty profile's `preferred_military_unit`, and
+  `scripts/macos/pf_sovereign_ai_difficulty_ab_probe.py` compares standard,
+  booming, and hard over the same extended Metal branch fixture. It verifies
+  different expansion counts, harassment wave counts, target-role priorities,
+  and militia-vs-archer pressure composition.
+- `scripts/sovereign/data/technologies.py` now includes strategy technologies
+  for infantry, expansion, and archer pressure. `CompositionStrategyPlanner`
+  researches the profile-specific strategy tech, trains toward the target unit
+  mix, and attacks the profile's preferred target role.
+- `scripts/macos/pf_sovereign_ai_composition_strategy_probe.py` verifies that
+  standard researches infantry drills and builds militia, booming researches
+  settlement logistics and builds a mixed militia/archer force, and hard
+  researches ranger fletching and builds archer pressure.
+- `scripts/sovereign/systems/combat_rules.py` now includes deterministic
+  composition-duel checks, and
+  `scripts/macos/pf_sovereign_ai_composition_counter_probe.py` verifies in
+  Metal that the standard, booming, and hard army plans win favorable matchups
+  and lose clearly unfavorable matchups.
+- `scripts/macos/pf_sovereign_ai_difficulty_balance_save_load_probe.py` now
+  runs a longer standard/booming/hard A/B balance fixture, snapshots each
+  branch at a save point, continues from planner snapshots, and verifies the
+  compact comparison report survives native `.pfsave` reload.
+- `scripts/sovereign/systems/skirmish.py` now includes
+  `MatchLengthBuildOrderPlanner`, which gives each difficulty profile a
+  deterministic opening-economy window before moving into expansion,
+  military-transition, and attack timing.
+- `scripts/macos/pf_sovereign_ai_match_length_adaptation_probe.py` verifies
+  standard, booming, and hard in one Metal scene, including opening duration,
+  transition step, expansion step, preferred attack-unit count, and attack
+  launch timing.
+- `scripts/sovereign/systems/skirmish.py` now includes
+  `AttritionRecoveryPlanner`, and `ScriptedSkirmishAI` tracks live rosters plus
+  explicit unit-loss records so failed attacks can trigger regroup/rebuild
+  behavior instead of counting lost units as ready attackers.
+- `scripts/macos/pf_sovereign_ai_attrition_recovery_probe.py` verifies a
+  hard-profile archer opening that loses two archers, defends against live base
+  pressure, regroups, retrains archers, and relaunches the attack in Metal.
+- `AttritionRecoveryPlanner` now records post-launch outcomes. A second failed
+  push escalates the next relaunch target from three to four archers, while a
+  successful relaunch clears recovery state and lets the planner shift back
+  toward economy/expansion.
+- `AttritionRecoveryPlanner` now also supports pressure-driven technology
+  pacing: after repeated failed pushes, the hard-profile probe researches
+  `ranger_fletching` through the existing `ResearchQueue` before the larger
+  second relaunch.
+- `MultiFrontArmyPlanner` now proves the first split-force control layer:
+  selected militia/archer subsets can be assigned to separate defense,
+  harassment, and building-attack fronts without reusing the same units.
+- `scripts/macos/pf_sovereign_ai_skirmish_soak_probe.py` composes the AI
+  layers into a larger Metal AI-vs-player soak: player production, enemy
+  income, multi-front activity, repeated attrition recovery, pressure-triggered
+  `ranger_fletching`, combat damage, conquest progress, and sustained runtime
+  ticks are checked together.
+- `scripts/macos/pf_sovereign_ai_large_army_scale_probe.py` adds the first
+  larger-army Metal scale gates. It now supports mass movement and attack-move
+  modes, records phase timing, sampled p50/p95/max wall-clock tick budgets, and
+  wide-zoom proof captures, and verifies mixed infantry/archer soaks up through
+  the first 1000-unit exploratory gate.
+- `scripts/macos/profile_sovereign_large_army_scale.sh` wraps that 1000-unit
+  gate with an attach-mode Instruments Time Profiler run and writes a compact
+  hotspot summary. The first trace shows the dominant CPU cost in ClearPath
+  collision-avoidance geometry (`inside_pcr`, `C_RayRayIntersection2D`,
+  `compute_vo_xpoints`) plus Metal skinned-animation assembly
+  (`append_skinned_anim_mesh`).
+- `src/game/clearpath.c` now avoids duplicate pairwise ray intersections in
+  `compute_vo_xpoints()`. This keeps the same unordered ray-pair candidate set
+  while cutting redundant dense-formation collision-avoidance work.
+- The post-change Time Profiler trace confirms that `compute_vo_xpoints`
+  inclusive samples dropped from the first-trace hotspot tier. The remaining
+  scale candidates are now `inside_pcr` work inside ClearPath and
+  `append_skinned_anim_mesh` in the Metal animation stream path.
+- `src/render/backend_metal.m:append_skinned_anim_mesh()` now precomposes the
+  entity model matrix with each joint skin matrix once per animated entity, so
+  CPU-side batch assembly skins directly into world space instead of applying a
+  second model transform to every skinned vertex. The 1000-unit profiled gate
+  now sits around a 351 ms p95 tick budget.
+- `src/game/clearpath.c` now has opt-in ClearPath diagnostic counters behind
+  `PF_CLEARPATH_STATS_PATH`, and the large-army probe can flush them before its
+  fast `os._exit()` path. The 1000-unit diagnostic run shows the next collision
+  bottleneck is not just raw ray count: it is repeated no-solution fallback
+  attempts, with roughly 1.12 million fallback removals, 2.15 billion xpoint
+  ray-pair tests, and 680 million `inside_pcr()` checks in that run.
+- `src/game/clearpath.c` now uses a guarded dense-fallback policy by default:
+  after a no-solution ClearPath attempt, it removes up to four furthest
+  neighbours only while 40 or more neighbours remain. This reduces repeated
+  dense retry work while leaving smaller formations close to prior behavior.
+- The post-fallback attach-mode Time Profiler trace shows the next primary CPU
+  lane is Metal animated mesh batch assembly (`append_skinned_anim_mesh`,
+  roughly 25.9% inclusive), followed by remaining ClearPath geometry
+  (`inside_pcr`, roughly 22.9% inclusive, and `compute_vo_xpoints`, roughly
+  11.8% inclusive). This makes animation batching the next clean scale target,
+  with ClearPath still close behind.
+- `src/render/backend_metal.m` now keeps a per-frame skinned-mesh cache for
+  animated Metal draws. The shadow pass can seed CPU-skinned vertices and the
+  main pass can reuse them for the same UID/model pair instead of assembling the
+  same mesh twice. The latest 1000-unit profiled gate drops from a 356.499 ms
+  p95 tick to 193.387 ms, with the 500-unit regression at 90.064 ms p95.
+- `src/game/clearpath.c` now uses direct squared-length determinant tests in
+  `inside_pcr()` and a ClearPath-local cross-product ray intersection in
+  `compute_vo_xpoints()`. This removes the generic slope-based ray-intersection
+  helper from the hot list and lowers ClearPath's profile share, though the
+  wall-clock p95 is effectively neutral at the current scale.
+- `src/phys/projectile.c` now checks projectile `sprite_flags` before spawning
+  trail sprites. This fixes a hidden dense-combat crash where collision flag
+  `PROJ_ONLY_HIT_ENEMIES` overlapped the sprite flag bit for
+  `PROJ_HAS_TRAIL_SPRITE`.
+- `src/render/backend_metal.m` now has an env-gated
+  `PF_METAL_GPU_SKINNING=1` prototype for batched animated main-pass and
+  shadow-pass draws. It keeps the default path unchanged, preserves per-caster
+  shadow owner diagnostics on the CPU path, and moves the 1000-unit opt-in p95
+  to about 69 ms in the normal gate and 54 ms in the Time Profiler run. The
+  leading hotspot becomes ClearPath again rather than CPU skinning.
 - `assets/sovereign/scenarios/two_player_skirmish.json` adds the first
   Sovereign scenario sidecar for player starts, diplomacy, starting resources,
   victory mode, and editor palette metadata.
@@ -226,8 +409,34 @@ MVP systems:
   probe is in place.
 - Scripted AI that gathers, builds, trains, and attacks. Initial enemy
   economy-seed/build/train/attack-wave proof and resource/population/training/
-  attack-readiness decisions are in place; autonomous gather, build-order
-  timing, scouting, and tactical target selection remain later slices.
+  attack-readiness decisions are in place. Deterministic build-order planning
+  now covers resource recovery, house construction, militia wave training,
+  priority target selection, and attack launch. Tactical scouting and nearby
+  threat response are now in place for defended assets. Scouting route
+  waypoints and threat memory now preserve last-known enemy positions after
+  visibility is gone. AI threat memory now also survives native save/load and
+  can drive outnumbered regroup, resource/population recovery, defender
+  training, and remembered-position response after restore. Adaptive strategy
+  now schedules scout refreshes, chooses archers against remembered military
+  threats, and launches counterattacks once the response force is ready. Macro
+  strategy now adds difficulty profiles, economy-vs-military weighting, and
+  second-base expansion. Map-control strategy now scores contested control
+  points, uses difficulty-tuned attack/retreat timing, recovers through
+  economy/population, trains archers, and launches a timed counterattack.
+  Branching strategy now splits militia defense from archer harassment, expands
+  to three town centers, and proves a longer branch sequence in Metal.
+  Difficulty-specific personalities, composition branching, balance save/load
+  comparisons, and match-length opening-to-military transition timing are now
+  covered by native Metal probes. Failed-attack recovery now handles a first
+  attrition case by recording unit loss, defending under live pressure,
+  regrouping survivors, rebuilding the preferred unit count, and relaunching.
+  Repeated attrition outcome tracking now distinguishes a second failed push
+  from a successful relaunch: the failed path escalates army size, and the
+  success path shifts back into economy/expansion. Repeated failed pressure can
+  now also trigger `ranger_fletching` before the larger second relaunch.
+  Multi-front control now splits disjoint groups across home defense, villager
+  harassment, and building attack fronts. Naval/air reactions remain later
+  slices.
 
 Later systems:
 
@@ -292,6 +501,30 @@ Benchmark targets:
 
 Benchmark scenes should include economy workers, mixed army movement, dense
 formations, large villages, fog/minimap updates, and projectile-heavy siege.
+The first larger-army probe now covers 192-unit, 250-unit, 500-unit, and a
+1000-unit exploratory mixed infantry/archer attack-move soak in Metal with
+wall-clock budget telemetry and wide-zoom captures. The 1000-unit run proves
+functional survival. After the first ClearPath duplicate-pair optimization, the
+1000-unit exploratory run clears the current 500 ms soft p95 tick budget. After
+the ClearPath stats and guarded fallback slices, the no-stats 1000-unit default
+regression passed at roughly 310 ms p95, compared with roughly 340 ms before the
+fallback policy. After the per-frame Metal skinned-mesh cache, the latest
+profiled 1000-unit p95 is 193.387 ms and the 500-unit regression p95 is
+90.064 ms. After the ClearPath fast-math slice, the 1000-unit gate remains
+green at 196.212 ms p95 with no warnings, and the Time Profiler no longer shows
+the generic `C_RayRayIntersection2D()` helper as a hotspot. The next scale
+target returned to Metal animated rendering. The first env-gated
+`PF_METAL_GPU_SKINNING=1` prototype now skins batched animated main/shadow
+draws on the GPU, drops the opt-in 1000-unit gate to about 69 ms p95, and drops
+the profiled p95 to about 54 ms. This is not the default yet; it needs visual
+parity and longer gameplay checks before promotion. The next scale target is
+ClearPath dense-candidate pressure under this new baseline. The first
+post-GPU-skinning ClearPath policy probe confirmed repeated no-solution
+fallback remains the pressure point, but no default fallback-policy change
+landed because the tested batch-removal variants were either too aggressive or
+unstable across verification runs. A 500-unit GPU-skinning capture-proof pass
+now records before/engage/soak/wide-zoom screenshots at 3456x2234 for visual
+hardening.
 
 Measure frame time, sim time, render time, pathfinding time, animation batch
 size, projectile count, fog/minimap update cost, Metal GPU time where available,
@@ -339,6 +572,24 @@ fixed or disabled in deterministic probes unless that system is the test target.
 | Save/load roundtrip | `pf_sovereign_save_load_probe.py` reloads native `.pfsave` and restores entity tags, scenario seed/setup/victory metadata, victory progress, player state, production queue, technology state, combat HP, and queued-unit continuation |
 | AI/skirmish loop | `pf_sovereign_skirmish_probe.py` trains an enemy wave from seeded scenario state, verifies setup profile, smooth motion and `Walk` animation, stages facing combat, applies data damage, and reports victory progress through the scenario victory dispatcher |
 | AI decision-depth probe | `pf_sovereign_ai_decision_probe.py` verifies resource shortfall, population block, house response, training, attack readiness, attack order, and decision logging in a Metal two-player fixture |
+| AI build-order probe | `pf_sovereign_ai_build_order_probe.py` verifies deterministic gather, house, militia training, priority target selection, attack launch, combat HP delta, victory progress, save/load, and queued-unit continuation after restore |
+| AI threat-response probe | `pf_sovereign_ai_threat_response_probe.py` verifies scouting, nearby threat classification, resource recovery, population recovery, defender training, defense launch, and defender motion toward the threat |
+| AI scout-memory probe | `pf_sovereign_ai_scout_memory_probe.py` verifies scouting route steps, remembered threats after current visibility is gone, memory-driven income/house/defender training, defense launch to a last-known position, and scout/defender motion |
+| AI memory save/load probe | `pf_sovereign_ai_memory_save_load_probe.py` verifies restored threat memory after native `.pfsave` load, outnumbered regroup, memory-driven income/house/training, and response to the remembered threat position |
+| AI adaptive strategy probe | `pf_sovereign_ai_adaptive_strategy_probe.py` verifies scheduled scout refresh, remembered-threat unit choice, archer counter-training, retreat/regroup, remembered-position response, counterattack launch, and movement |
+| AI macro-strategy probe | `pf_sovereign_ai_macro_strategy_probe.py` verifies difficulty profiles, economy-vs-military scoring, second-base expansion, military recovery, archer training, strategic attack launch, and movement |
+| AI map-control strategy probe | `pf_sovereign_ai_map_control_probe.py` verifies control-point scoring, difficulty thresholds, retreat/regroup timing, resource/population recovery, archer training, map-control attack launch, and movement |
+| AI branching strategy probe | `pf_sovereign_ai_branching_strategy_probe.py` verifies defense/harassment split decisions, expansion income, three-base planning, harassment training, harassment launch, and separate defense/harass movement |
+| AI personality save/load probe | `pf_sovereign_ai_personality_save_load_probe.py` verifies difficulty personality fields, hard-profile harassment cadence, compact native save/load state, restored cooldown hold, and a second harassment wave after reload |
+| AI difficulty A/B probe | `pf_sovereign_ai_difficulty_ab_probe.py` compares standard, booming, and hard over an extended branch fixture, proving expansion targets, harassment frequency, target priority, and profile-driven militia/archer composition diverge as intended |
+| AI composition strategy probe | `pf_sovereign_ai_composition_strategy_probe.py` verifies profile-specific strategy research, target unit mixes, profile attack-role priorities, and composition attack launch for standard, booming, and hard |
+| AI composition counter probe | `pf_sovereign_ai_composition_counter_probe.py` verifies standard, booming, and hard army plans against favorable and unfavorable enemy compositions, including expected wins, expected losses, and damage-bonus rule checks |
+| AI difficulty balance save/load probe | `pf_sovereign_ai_difficulty_balance_save_load_probe.py` verifies longer profile comparisons, save-point snapshots, post-snapshot continuation, balance tuning, compact state tagging, and native `.pfsave` reload of the A/B report |
+| AI match-length adaptation probe | `pf_sovereign_ai_match_length_adaptation_probe.py` verifies profile-specific opening economy duration, economy-vs-military transition timing, expansion timing, preferred attack-unit counts, and attack launch timing for standard, booming, and hard |
+| AI attrition recovery probe | `pf_sovereign_ai_attrition_recovery_probe.py` verifies failed attack detection, live-pressure defense, survivor regrouping, replacement training, military-over-economy pressure scoring, repeated failed-push escalation, pressure-triggered `ranger_fletching` research before the larger second relaunch, successful outcome tracking, post-success expansion, and attack relaunch after casualties |
+| AI multi-front probe | `pf_sovereign_ai_multi_front_probe.py` verifies disjoint unit assignments for defense, harassment, and building attack fronts, plus separate movement toward each front in Metal |
+| AI skirmish soak probe | `pf_sovereign_ai_skirmish_soak_probe.py` verifies a larger AI-vs-player fixture with player production, enemy economy income, disjoint multi-front activity, attrition recovery, pressure tech, relaunch, combat damage, victory progress, and sustained Metal ticks |
+| AI large-army scale probe | `pf_sovereign_ai_large_army_scale_probe.py` verifies 96/125/250/500 units per side, mass movement or attack-move orders, movement distance, active Walk/Attack animations, representative combat/projectile-heavy damage, sustained Metal ticks, sampled p50/p95/max wall-clock budgets, soft budget warnings, and optional wide-zoom proof captures; `profile_sovereign_large_army_scale.sh` records an attach-mode Time Profiler trace and hotspot summary for the 1000-unit gate |
 | Long skirmish session | `pf_sovereign_long_skirmish_probe.py` runs staged economy, building construction, player production, enemy attack waves, conquest victory progress, native session save, session load, and queued-unit continuation after restore |
 | Editor workflow probe | editor Save As writes PFMAP/PFSCENE plus a `.sovereign.json` sidecar when `PF_EDITOR_SOVEREIGN_SCENARIO_EXPORT=1`; with `PF_EDITOR_SOVEREIGN_AUTHORING_PROBE=1`, the editor tab edits player starts/resources/objects, setup profile, resource preset, scenario seed, author notes, and victory label, applies placement points, and validates ownership/clusters before save; with `PF_EDITOR_SOVEREIGN_AUTHORING_RELOAD_PROBE=1`, loading the saved map imports the sidecar and export report back into the authoring tab; `pf_sovereign_editor_scenario_probe.py` validates, exports, reloads, spawns placed resources/objects, verifies metadata/report checks, setup profile/resource preset, seeded setup, victory dispatch, trains from, and victory-checks that sidecar |
 | Asset validation | no missing textures, bounds, or required animations |
@@ -390,5 +641,31 @@ state deltas fail the gate.
 10. AI/skirmish loop. Initial deterministic two-player script, enemy
     economy-seed/train wave, walking animation check, facing combat proof,
     conquest-style winner check, resource/population/training/attack-readiness
-    decisions, and a longer staged session/save-load probe are in place.
-11. Performance, Retina clarity, and HD/4K polish.
+    decisions, deterministic build-order planning, priority target selection,
+    tactical threat response, scouting route waypoints, threat memory,
+    macro-strategy expansion, map-control scoring, difficulty-tuned
+    attack/retreat timing, branching defense/harassment behavior, three-base
+    expansion sequencing, difficulty-specific personality/cadence tuning,
+    branch-state save/load continuation, difficulty A/B behavior comparison,
+    profile-driven harassment composition, strategy research, target unit-mix
+    branching, composition counter checks, longer difficulty balance
+    save/load coverage, match-length opening-to-military transition timing,
+    failed-attack attrition recovery under live pressure, repeated attrition
+    outcome tracking, pressure-triggered tech pacing, multi-front army control,
+    a larger AI-vs-player skirmish soak, a first 192-unit scale soak, and a
+    longer staged session/save-load probe are in place.
+11. Performance, Retina clarity, and HD/4K polish. The current Metal scale
+    floor includes a green 500-unit regression and a green 1000-unit
+    exploratory gate with Time Profiler evidence. ClearPath fallback policy and
+    animated mesh affine assembly have been tuned, and the Metal skinned-mesh
+    cache now avoids duplicate CPU skinning across shadow/main passes for
+    cacheable animated draws. Shadow-side animated casters now batch by shared
+    render data while the owner-id shadow diagnostic path remains per-caster.
+    The first env-gated GPU-skinning prototype now moves batched animated
+    main-pass and shadow-pass work to Metal for the 1000-unit scale gate,
+    lowering the opt-in p95 from about 181 ms to about 69 ms. It is not default
+    yet. A follow-up ClearPath dense-policy probe rejected broader fallback
+    batch defaults as unstable, while a GPU-skinning capture-proof run saved
+    before/engage/soak/wide-zoom evidence. Remaining work is visual parity and
+    longer-session hardening before promotion, with ClearPath `inside_pcr` and
+    no-solution fallback pressure still the leading scale lane.
