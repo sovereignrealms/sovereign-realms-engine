@@ -5,6 +5,7 @@ from sovereign.data.armor_classes import ARMOR_CLASSES, DAMAGE_BONUSES, DAMAGE_C
 from sovereign.data.buildings import BUILDINGS
 from sovereign.data.civilizations import CIVILIZATIONS
 from sovereign.data.resources import RESOURCES
+from sovereign.data.readability import validate_unit_readability
 from sovereign.data.technologies import TECHNOLOGIES
 from sovereign.data.units import UNITS
 
@@ -48,6 +49,8 @@ def validate_registries():
             descriptor = projectile.get("descriptor")
             if not descriptor or len(descriptor) < 4:
                 _error(errors, "unit '{0}' has invalid projectile descriptor".format(unit_id))
+    for error in validate_unit_readability(UNITS)["errors"]:
+        _error(errors, error)
 
     for building_id, building in BUILDINGS.items():
         if "asset" not in building:

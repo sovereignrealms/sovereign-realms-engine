@@ -182,8 +182,12 @@ file records execution status as slices are completed and verified.
   proof captures. A first actual readability overlay slice is also DONE:
   selected player-owned units keep neutral white thin rings, Metal world-color
   overlays render through the native color pipeline, and healthbars shrink on
-  wide zoom. This is an evidence baseline, not a claim that the stock
-  placeholder assets are production HD/4K quality.
+  wide zoom. A first asset-readability gate is also DONE: current Sovereign
+  placeholder units now carry far-view silhouette, minimum-pixel, marker-policy,
+  and team-color-mask metadata, and strict validation intentionally blocks
+  production readiness until real team-color masks exist. This is an evidence
+  baseline, not a claim that the stock placeholder assets are production HD/4K
+  quality.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
   first Sovereign organization checkpoint merge.
@@ -7762,3 +7766,96 @@ Conclusion:
 - This improves selection/readability UX and fixes a real Metal overlay-color
   bug, but full production readability still needs asset-side team-color masks,
   clearer far-view silhouettes, LOD/icon rules, and richer biome/terrain art.
+
+## Completed Slice 88 — Unit Readability Metadata And Team-Color Mask Gate
+
+Goal:
+
+- Start the asset-side half of Phase 10 readability without changing renderer
+  behavior prematurely.
+- Track which Sovereign units have far-view silhouette/readability rules and
+  which still need production team-color masks.
+
+Implementation:
+
+- Added `readability` metadata to the current Sovereign placeholder unit
+  registry entries:
+  - `villager`: worker/cart placeholder, compact selected-or-damaged marker
+    policy, pending `cart_team_mask.png`
+  - `militia`: frontline melee placeholder, compact selected-or-damaged marker
+    policy, pending `Knight_team_mask.png`
+  - `archer`: ranged/caster placeholder, compact selected-or-damaged marker
+    policy, pending `Mage_team_mask.png`
+- Added `scripts/sovereign/data/readability.py` for shared validation and
+  summary generation.
+- Added `tools/asset_validation/validate_sovereign_readability.py`.
+  - normal mode allows `pending_mask` and reports warnings
+  - `--strict` is the production gate and fails until real masks exist
+- Wired registry validation to fail on missing/malformed readability metadata.
+- Added `asset_readability` to the HD/Retina readability probe summary JSON.
+- Updated asset/tooling docs and the Sovereign engine-work notes to describe
+  the team-color-mask and far-view silhouette convention.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  scripts/sovereign/factory.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py \
+  tools/asset_validation/validate_sovereign_readability.py
+```
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_WARNING unit 'archer' still needs production team-color mask
+SOVEREIGN_READABILITY_WARNING unit 'militia' still needs production team-color mask
+SOVEREIGN_READABILITY_WARNING unit 'villager' still needs production team-color mask
+SOVEREIGN_READABILITY_VALID units=3 production_ready=0 pending_team_masks=3
+```
+
+Strict production gate:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+```
+
+Observed expected failure:
+
+```text
+SOVEREIGN_READABILITY_INVALID units=3 pending_team_masks=3
+```
+
+Runtime/proof checks:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_factory_probe.py \
+  --output-dir qa-output/sovereign-readability-factory-check
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-asset-rules \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_FACTORY_PROBE_PASS backend=METAL entities=10 units=3 buildings=3 resources=4
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=0
+asset_readability.pending_team_masks=3
+```
+
+Conclusion:
+
+- The engine now has a concrete, testable place to enforce team-color and
+  far-view readability expectations for Sovereign units.
+- Current placeholder units are explicitly marked as not production-ready for
+  team-color readability. That is the intended state until real unit textures
+  and masks replace the placeholder Knight/Mage/cart assets.

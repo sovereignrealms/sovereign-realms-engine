@@ -24,6 +24,13 @@
 - Extended the HD/Retina readability probe with paired close/wide status
   scenes so healthbar and selection readability can be compared against
   unmarked baseline captures.
+- Added Sovereign unit readability metadata for placeholder villager, militia,
+  and archer definitions, including far-view silhouette class, minimum pixel
+  target, marker policy, and pending team-color mask path.
+- Added `tools/asset_validation/validate_sovereign_readability.py` so normal
+  checks can track pending masks while strict production checks fail until real
+  texture masks exist.
+- Added asset-readability status to the HD/Retina readability proof summary.
 
 ## 2026-05-07
 

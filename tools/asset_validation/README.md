@@ -22,3 +22,23 @@ skinning-weight sanity.
 
 Use `--strict` in CI or intake gates when warnings should fail the asset.
 Use `--verbose` when you need every warning line.
+
+## Sovereign Readability Validation
+
+Validate the Sovereign unit readability metadata:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py
+```
+
+The readability gate checks that every unit has a far-view silhouette class,
+minimum pixel target, marker policy, and team-color strategy. Current
+placeholder units are allowed to report `pending_mask` in the normal gate so
+gameplay probes can continue to run while production art is incomplete.
+
+Use `--strict` when a production asset pack is expected to have real texture
+masks instead of pending placeholders:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+```

@@ -13,6 +13,7 @@ sys.path.insert(0, pf.get_basedir() + "/scripts")
 
 import rts.globals
 import rts.main as demo_main
+from sovereign.data.readability import summarize_unit_readability
 from rts.units.berzerker import Berzerker
 from rts.units.goblin import Goblin
 from rts.units.knight import Knight
@@ -502,6 +503,7 @@ def _write_summary(status, reason=None):
             "note": "metrics are evidence gates for regression tracking, not proof of final HD/4K art quality",
         },
         "readability_rule_deltas": rule_deltas,
+        "asset_readability": summarize_unit_readability(basedir=pf.get_basedir()),
         "current_limitations": [
             "stock low-poly character meshes are readable but not HD/4K close-zoom quality",
             "team-color material masks and far-view silhouettes are still production-asset work",

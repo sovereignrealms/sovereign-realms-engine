@@ -15,6 +15,20 @@ UNITS = {
         "gather_speed": {"food": 4.0, "wood": 4.0, "gold": 3.0, "stone": 3.0},
         "selection_radius": 2.5,
         "scale": (1.0, 1.0, 1.0),
+        "readability": {
+            "silhouette": "worker_cart_placeholder",
+            "far_view": {
+                "class": "worker",
+                "marker_policy": "compact_healthbar_when_selected_or_damaged",
+                "minimum_pixels": 8,
+            },
+            "team_color": {
+                "mode": "pending_mask",
+                "mask": "cart_team_mask.png",
+                "priority": "required",
+                "notes": "placeholder cart asset; production villager needs visible team-color clothing/tool mask",
+            },
+        },
         "armor_classes": ["infantry"],
         "attacks": [{"damage_class": "melee", "damage": 3, "range": 1.5}],
     },
@@ -31,6 +45,20 @@ UNITS = {
         "speed": 20.0,
         "selection_radius": 3.25,
         "scale": (0.75, 0.75, 0.75),
+        "readability": {
+            "silhouette": "heavy_infantry_placeholder",
+            "far_view": {
+                "class": "frontline_melee",
+                "marker_policy": "compact_healthbar_when_selected_or_damaged",
+                "minimum_pixels": 10,
+            },
+            "team_color": {
+                "mode": "pending_mask",
+                "mask": "Knight_team_mask.png",
+                "priority": "required",
+                "notes": "placeholder Knight texture; production infantry needs shield/cloth/team-paint mask",
+            },
+        },
         "armor_classes": ["infantry"],
         "attacks": [{"damage_class": "melee", "damage": 4, "range": 1.5}],
     },
@@ -47,6 +75,20 @@ UNITS = {
         "speed": 20.0,
         "selection_radius": 3.0,
         "scale": (0.75, 0.75, 0.75),
+        "readability": {
+            "silhouette": "ranged_caster_placeholder",
+            "far_view": {
+                "class": "ranged",
+                "marker_policy": "compact_healthbar_when_selected_or_damaged",
+                "minimum_pixels": 9,
+            },
+            "team_color": {
+                "mode": "pending_mask",
+                "mask": "Mage_team_mask.png",
+                "priority": "required",
+                "notes": "placeholder Mage texture; production archer needs garment/banner team-color mask",
+            },
+        },
         "armor_classes": ["archer"],
         "attacks": [{"damage_class": "pierce", "damage": 5, "range": 44.0}],
         "projectile": {

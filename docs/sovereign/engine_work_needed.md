@@ -91,8 +91,15 @@ Required conventions:
   convention can come later.
 - Large-army readability needs close, normal, and far-view asset rules before
   500+ unit scenes are judged.
+- Every Sovereign unit registry entry must include readability metadata:
+  silhouette class, far-view class, minimum pixel target, marker policy, and
+  team-color strategy.
 
 Use `tools/asset_validation/validate_pfobj.py` as the first validation gate.
+Use `tools/asset_validation/validate_sovereign_readability.py` to track
+team-color-mask and far-view silhouette readiness. Normal mode allows current
+placeholder units to report pending masks; strict mode is the production gate
+once final unit art is expected.
 
 ## Gameplay Data Architecture
 

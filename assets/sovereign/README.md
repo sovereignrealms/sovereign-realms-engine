@@ -37,3 +37,18 @@ PFSCENE.
 
 Do not place Microsoft, Ensemble Studios, or Age of Empires assets in this
 tree. Use original, commissioned, or clearly licensed assets only.
+
+## Unit Readability Requirements
+
+Every production unit must have readability metadata in
+`scripts/sovereign/data/units.py`:
+
+- a far-view silhouette class
+- a minimum pixel target for wide zoom
+- a marker policy for when healthbars or other UI indicators may appear
+- a team-color strategy
+
+The preferred production team-color strategy is a texture mask stored beside
+the unit texture and referenced by the unit's `readability.team_color.mask`
+field. Current placeholder assets may use `pending_mask`, but that is not
+production-ready.
