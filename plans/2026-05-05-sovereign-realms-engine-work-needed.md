@@ -188,14 +188,14 @@ file records execution status as slices are completed and verified.
   production readiness until real team-color masks exist. A first one-unit
   team-color-mask proof is also DONE for the militia/Knight placeholder:
   `Knight_team_mask.png` validates at 512x512 and the scoped strict gate passes
-  for `militia`. Full current-pack strict readiness is now DONE as well:
-  Mage/archer and cart/villager masks were added, and the strict readability
-  gate reports `production_ready=3 pending_team_masks=0`. A renderer-side
-  mask proof is now DONE too: faction color is carried through the shared
-  render state, Metal loads sibling `<texture>_team_mask.png` arrays, and the
-  HD readability proof shows faction-tinted unit bodies while selection rings
-  remain neutral white. This is an evidence baseline, not a claim that the
-  stock placeholder assets are production HD/4K quality.
+  for `militia`. A renderer-side mask proof is now DONE too: faction color is
+  carried through the shared render state, Metal loads sibling
+  `<texture>_team_mask.png` arrays, and the HD readability proof shows
+  faction-tinted authored accents while selection rings remain neutral white.
+  The earlier cart-wide `wood_team_mask.png` proof was intentionally backed
+  out because it tinted too much of the main-world material and did not match
+  the AoE-style direction. Strict readiness is again blocked on purpose until
+  the villager/cart placeholder gets subtle authored accent art.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
   first Sovereign organization checkpoint merge.
@@ -8121,3 +8121,61 @@ Conclusion:
   remain neutral white.
 - This closes the current mask-rendering proof; final production art still
   needs purpose-built high-clarity unit textures and masks.
+
+## Completed Slice 92 — AoE-Style Team-Color Scope Correction
+
+Goal:
+
+- Align team-color usage with the user's AoE-style direction:
+  strong faction colors belong on minimap markers, while main-world units and
+  buildings should use only subtle authored accents.
+- Prevent broad whole-material masks from being accepted as production-ready.
+
+Implementation:
+
+- Added an AoE-style readability note to `AGENTS.md`: minimap markers may use
+  strong faction colors, but main-world material tinting must stay limited to
+  authored accents such as shields, banners, cloth trim, flags, roofs, and
+  tools.
+- Added PNG mask coverage validation to
+  `scripts/sovereign/data/readability.py`.
+  - Default max coverage: 35% of the source texture.
+  - Coverage uses RGB intensity only, matching the Metal shader convention.
+- Changed the placeholder `villager` back to `pending_mask`.
+  - Removed the broad `wood_team_mask.png` cart proof because it tinted the
+    whole wood material and looked like material UI instead of AoE-style art.
+- Updated Sovereign asset docs to state that the current cart/villager
+  placeholder still needs a proper small accent mask.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-aoe-team-color-scope-dummy \
+  --expect-backend METAL
+```
+
+Observed:
+
+- Non-strict readability remains valid with one pending production mask:
+  `SOVEREIGN_READABILITY_VALID units=3 production_ready=2 pending_team_masks=1`.
+- Strict readability fails intentionally until villager production art gets a subtle
+  authored accent mask.
+- Metal and OpenGL builds pass.
+- The visual proof could not complete because macOS `screencapture` returned
+  all-black PNGs even for a plain desktop screenshot. The probe initialized and
+  wrote asset-readability summary data, but the capture gate is blocked by the
+  desktop capture service rather than by renderer output.

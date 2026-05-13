@@ -121,6 +121,7 @@ static id<MTLTexture>            s_frame_depth_texture;
 static id<MTLTexture>            s_shadow_depth_texture;
 static id<MTLTexture>            s_shadow_owner_texture;
 static id<MTLTexture>            s_shadow_owner_dummy_texture;
+static id<MTLTexture>            s_team_mask_dummy_texture;
 static id<MTLTexture>            s_water_reflection_texture;
 static id<MTLTexture>            s_water_reflection_depth_texture;
 static id<MTLTexture>            s_water_refraction_texture;
@@ -1495,6 +1496,7 @@ static void release_scene_resources(void)
     s_shadow_depth_texture = nil;
     s_shadow_owner_texture = nil;
     s_shadow_owner_dummy_texture = nil;
+    s_team_mask_dummy_texture = nil;
     s_water_reflection_texture = nil;
     s_water_reflection_depth_texture = nil;
     s_water_refraction_texture = nil;
@@ -2217,6 +2219,35 @@ static bool ensure_shadow_owner_dummy_texture(void)
                                       withBytes:&zero
                                     bytesPerRow:sizeof(zero)];
     return true;
+}
+
+static id<MTLTexture> ensure_team_mask_dummy_texture(void)
+{
+    if(s_team_mask_dummy_texture)
+        return s_team_mask_dummy_texture;
+    if(!s_device)
+        return nil;
+
+    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                                     width:1
+                                                                                    height:1
+                                                                                 mipmapped:NO];
+    desc.textureType = MTLTextureType2DArray;
+    desc.arrayLength = 1;
+    desc.storageMode = MTLStorageModeShared;
+    desc.usage = MTLTextureUsageShaderRead;
+    s_team_mask_dummy_texture = [s_device newTextureWithDescriptor:desc];
+    if(!s_team_mask_dummy_texture)
+        return nil;
+
+    unsigned char zero[4] = {0, 0, 0, 0};
+    [s_team_mask_dummy_texture replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
+                                 mipmapLevel:0
+                                       slice:0
+                                   withBytes:zero
+                                 bytesPerRow:sizeof(zero)
+                               bytesPerImage:sizeof(zero)];
+    return s_team_mask_dummy_texture;
 }
 
 static bool ensure_shadow_screen_probe_buffers(void)
@@ -5830,8 +5861,9 @@ static void render_static_vertex_stream(const struct render_private *priv,
         [encoder setFragmentTexture:texture_array atIndex:0];
         [encoder setFragmentSamplerState:s_material_sampler atIndex:0];
     }
-    if(team_mask_array && mutable_priv->metal_team_masks_available)
-        [encoder setFragmentTexture:team_mask_array atIndex:3];
+    id<MTLTexture> bound_team_mask = team_mask_array ? team_mask_array : ensure_team_mask_dummy_texture();
+    if(bound_team_mask)
+        [encoder setFragmentTexture:bound_team_mask atIndex:3];
     if(shadow_enabled_for_draw()) {
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
@@ -5923,8 +5955,9 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
         [encoder setFragmentTexture:texture_array atIndex:0];
         [encoder setFragmentSamplerState:s_material_sampler atIndex:0];
     }
-    if(team_mask_array && mutable_priv->metal_team_masks_available)
-        [encoder setFragmentTexture:team_mask_array atIndex:3];
+    id<MTLTexture> bound_team_mask = team_mask_array ? team_mask_array : ensure_team_mask_dummy_texture();
+    if(bound_team_mask)
+        [encoder setFragmentTexture:bound_team_mask atIndex:3];
     if(shadow_enabled_for_draw()) {
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
@@ -6117,8 +6150,9 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
         [encoder setFragmentTexture:texture_array atIndex:0];
         [encoder setFragmentSamplerState:s_material_sampler atIndex:0];
     }
-    if(team_mask_array && mutable_priv->metal_team_masks_available)
-        [encoder setFragmentTexture:team_mask_array atIndex:3];
+    id<MTLTexture> bound_team_mask = team_mask_array ? team_mask_array : ensure_team_mask_dummy_texture();
+    if(bound_team_mask)
+        [encoder setFragmentTexture:bound_team_mask atIndex:3];
     if(shadow_enabled_for_draw()) {
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];

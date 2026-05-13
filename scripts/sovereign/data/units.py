@@ -23,10 +23,10 @@ UNITS = {
                 "minimum_pixels": 8,
             },
             "team_color": {
-                "mode": "texture_mask",
-                "mask": "wood_team_mask.png",
+                "mode": "pending_mask",
+                "mask": None,
                 "priority": "required",
-                "notes": "placeholder cart mask follows the renderer's texture-name convention until production villager art exists",
+                "notes": "no broad cart wood tint; production villager art needs a small authored accent mask",
             },
         },
         "armor_classes": ["infantry"],
