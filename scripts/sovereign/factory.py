@@ -71,6 +71,10 @@ def validate_registries():
         for effect in tech.get("effects", []):
             if effect.get("type") == "set_age" and effect.get("age") not in AGES:
                 _error(errors, "technology '{0}' sets unknown age '{1}'".format(tech_id, effect.get("age")))
+            elif effect.get("type") == "strategy_tag" and not effect.get("tag"):
+                _error(errors, "technology '{0}' has a strategy tag effect without a tag".format(tech_id))
+            elif effect.get("type") not in ("set_age", "strategy_tag"):
+                _error(errors, "technology '{0}' has unsupported effect '{1}'".format(tech_id, effect.get("type")))
 
     for damage_class, bonuses in DAMAGE_BONUSES.items():
         if damage_class not in DAMAGE_CLASSES:

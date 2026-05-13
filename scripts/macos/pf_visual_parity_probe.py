@@ -441,6 +441,11 @@ def _write_summary():
         "frozen_anim_count": STATE["frozen_anim_count"],
         "splat_pairs": STATE["splat_pairs"],
         "lighting": time_of_day.current_state(),
+        "env": {
+            "PF_METAL_GPU_SKINNING": os.environ.get("PF_METAL_GPU_SKINNING", ""),
+            "PF_PARITY_MODE": os.environ.get("PF_PARITY_MODE", ""),
+            "PF_RTS_TIME_OF_DAY_PHASE": os.environ.get("PF_RTS_TIME_OF_DAY_PHASE", ""),
+        },
     }
     with open(path, "w") as outfile:
         json.dump(payload, outfile, indent=2, sort_keys=True)
@@ -530,7 +535,8 @@ def on_update(user, event):
         if len(STATE["samples"]) >= 90:
             _finish_scene()
             return
-        if _phase_elapsed() > 8.0:
+        settle_timeout = float(os.environ.get("PF_VISUAL_PARITY_SETTLE_TIMEOUT_SEC", "8.0"))
+        if _phase_elapsed() > settle_timeout:
             _fail("timed out settling {0}".format(STATE["phase"]))
 
     if STATE["phase"] == "stage_water_units":

@@ -602,8 +602,7 @@ static void field_build_integration_region(
             if(total_cost < inout[neighb_dr * region.r + neighb_dc]) {
 
                 inout[neighb_dr * region.r + neighb_dc] = total_cost;
-                if(!pq_td_contains(frontier, field_compare_tds, neighbours[i]))
-                    pq_td_push(frontier, total_cost, neighbours[i]);
+                pq_td_push(frontier, total_cost, neighbours[i]);
             }
         }
     }
@@ -695,8 +694,7 @@ static void field_build_integration_nonpass_region(
             if(total_cost < inout[neighb_dr * region.r + neighb_dc]) {
 
                 inout[neighb_dr * region.r + neighb_dc] = total_cost;
-                if(!pq_td_contains(frontier, field_compare_tds, neighb))
-                    pq_td_push(frontier, total_cost, neighb);
+                pq_td_push(frontier, total_cost, neighb);
             }
         }
     }

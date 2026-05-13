@@ -53,6 +53,7 @@ struct SDL_RWops;
 
 bool G_Move_Init(const struct map *map);
 void G_Move_Shutdown(void);
+void G_Move_WriteStats(void);
 bool G_Move_HasWork(void);
 void G_Move_FlushWork(void);
 
@@ -83,4 +84,3 @@ bool G_Move_SaveState(struct SDL_RWops *stream);
 bool G_Move_LoadState(struct SDL_RWops *stream);
 
 #endif
-

@@ -6,7 +6,12 @@ CIVILIZATIONS = {
         "starting_buildings": ["town_center"],
         "available_units": ["villager", "militia", "archer"],
         "available_buildings": ["town_center", "house", "barracks"],
-        "available_technologies": ["advance_to_rising"],
+        "available_technologies": [
+            "advance_to_rising",
+            "infantry_drills",
+            "settlement_logistics",
+            "ranger_fletching",
+        ],
         "team_color": [0.1, 0.25, 0.95],
         "bonuses": [],
     },
