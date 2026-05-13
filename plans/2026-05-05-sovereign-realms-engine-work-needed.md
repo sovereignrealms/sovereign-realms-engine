@@ -177,12 +177,16 @@ file records execution status as slices are completed and verified.
   sustained soak, so the instability is dense-battle scheduling/ClearPath
   pressure rather than the seek-cadence policy by itself.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
-  ignore updates, README/NOTICE/CHANGES polish, and handoff checklist.
+  ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
+  first Sovereign organization checkpoint merge.
 - Strict publish blocker cleanup: DONE on `codex/sovereign-publish-preflight`;
   strict preflight reports `fails=0 warnings=0`.
 - Multi-world/game-pack repository policy: DONE for `games/` structure,
   per-pack license docs, and MIT-licensed example pack.
-- GitHub organization push: PENDING.
+- GitHub organization push: DONE. `sovereignrealms/sovereign-realms-engine`
+  PR #1, `Add Sovereign MVP AI and scale gates`, was squash-merged into
+  `main` as `730156a4` on 2026-05-13. Local `main` is aligned with
+  `sovereign/main`.
 
 ## Completed Slice 1 — Repo/License And Package Bootstrap
 
@@ -4130,9 +4134,9 @@ Rough status against the ten-phase plan:
 
 - Phases 0-1: repo bootstrap and Metal baseline are functionally in place, but
   upstream PR hygiene remains separate from Sovereign organization packaging.
-  The Sovereign publish preflight/checklist is now in place and strict publish
-  hygiene is green on `codex/sovereign-publish-preflight`. The organization
-  push remains pending.
+  The Sovereign publish preflight/checklist is now in place, strict publish
+  hygiene is green, and the first Sovereign organization checkpoint is merged
+  into `sovereignrealms/sovereign-realms-engine`.
 - Phases 2-3: asset pipeline seed and data-driven definitions are in place;
   real production art/validation depth remains.
 - Phases 4-7: economy, production/population, age/tech, combat counters,
@@ -4186,9 +4190,10 @@ benchmarking, and HD/Retina presentation still need focused slices.
 
 Status by plan shape:
 
-- Latest execution slices: 57 completed slices are recorded.
+- Latest execution slices: 85 completed or rejected execution slices are
+  recorded through the ClearPath x-point candidate-reduction experiments.
 - Current-status checklist: all listed implementation items are marked DONE,
-  with only the actual GitHub organization push marked PENDING.
+  including the first GitHub organization push/merge.
 - Ten-phase production roadmap: Phases 0-9 have MVP scaffolding/probes in
   place; Phase 10 and production-quality content remain the largest open work.
 

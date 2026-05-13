@@ -1,5 +1,16 @@
 # Sovereign Realms Changes
 
+## 2026-05-13
+
+- Squash-merged the first Sovereign organization checkpoint PR into
+  `sovereignrealms/sovereign-realms-engine` `main` as `730156a4`.
+- Confirmed local `main` is aligned with `sovereign/main` after the merge.
+- Removed 96 untracked Finder/iCloud-style `" 2"` duplicate files after
+  verifying each was byte-for-byte identical to its canonical source file.
+- Updated the active Sovereign plan to mark the organization push/merge done
+  and to point the next production work toward Phase 10 scale, HD/Retina, and
+  production-content slices.
+
 ## 2026-05-07
 
 - Documented the single-repo early development model: engine, editor,
