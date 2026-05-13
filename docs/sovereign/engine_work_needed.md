@@ -106,12 +106,14 @@ entries:
 
 - `militia`: `assets/models/knight/Knight_team_mask.png`
 - `archer`: `assets/models/mage/Mage_team_mask.png`
-- `villager`: `assets/models/cart/cart_team_mask.png`
+- `villager`: `assets/models/cart/wood_team_mask.png`
 
 Use `tools/asset_validation/validate_sovereign_readability.py --strict` as the
 current pack-level gate. The cart mask is intentionally a placeholder
-whole-texture mask because the cart asset has no separate team-color region;
-final Sovereign villager art still needs a purpose-built clothing/tool mask.
+whole-texture mask because the cart asset has no separate team-color region.
+Its filename follows the renderer lookup convention: a material texture named
+`wood.jpg` uses a sibling mask named `wood_team_mask.png`. Final Sovereign
+villager art still needs a purpose-built clothing/tool mask.
 
 ## Gameplay Data Architecture
 

@@ -116,6 +116,29 @@ static struct gamestate s_gs;
 /* STATIC FUNCTIONS                                                          */
 /*****************************************************************************/
 
+static float g_unit_color_channel(float raw)
+{
+    float ret = raw > 1.0f ? raw / 255.0f : raw;
+    return MIN(MAX(ret, 0.0f), 1.0f);
+}
+
+static vec4_t g_team_color_for(uint32_t uid)
+{
+    int faction_id = G_GetFactionID(uid);
+    if(faction_id < 0 || faction_id >= MAX_FACTIONS)
+        return (vec4_t){0.0f, 0.0f, 0.0f, 0.0f};
+    if(0 == (s_gs.factions_allocd & (0x1u << faction_id)))
+        return (vec4_t){0.0f, 0.0f, 0.0f, 0.0f};
+
+    vec3_t color = s_gs.factions[faction_id].color;
+    return (vec4_t){
+        g_unit_color_channel(color.x),
+        g_unit_color_channel(color.y),
+        g_unit_color_channel(color.z),
+        1.0f
+    };
+}
+
 static vec2_t g_default_minimap_pos(void)
 {
     struct sval res = (struct sval){
@@ -459,6 +482,7 @@ static void g_make_draw_list(vec_entity_t ents, vec_rstat_t *out_stat, vec_ranim
                 .uid = curr,
                 .render_private = ent->render_private,
                 .model = model,
+                .team_color = g_team_color_for(curr),
                 .translucent = !!(flags & ENTITY_FLAG_TRANSLUCENT),
             };
             A_GetRenderState(curr, &rstate.desc);
@@ -475,6 +499,7 @@ static void g_make_draw_list(vec_entity_t ents, vec_rstat_t *out_stat, vec_ranim
                 .uid = curr,
                 .render_private = ent->render_private,
                 .model = model,
+                .team_color = g_team_color_for(curr),
                 .translucent = !!(flags & ENTITY_FLAG_TRANSLUCENT),
                 .td = td
             };

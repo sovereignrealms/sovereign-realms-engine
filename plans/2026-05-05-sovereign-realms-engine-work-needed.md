@@ -190,9 +190,12 @@ file records execution status as slices are completed and verified.
   `Knight_team_mask.png` validates at 512x512 and the scoped strict gate passes
   for `militia`. Full current-pack strict readiness is now DONE as well:
   Mage/archer and cart/villager masks were added, and the strict readability
-  gate reports `production_ready=3 pending_team_masks=0`. This is an evidence
-  baseline, not a claim that the stock placeholder assets are production HD/4K
-  quality.
+  gate reports `production_ready=3 pending_team_masks=0`. A renderer-side
+  mask proof is now DONE too: faction color is carried through the shared
+  render state, Metal loads sibling `<texture>_team_mask.png` arrays, and the
+  HD readability proof shows faction-tinted unit bodies while selection rings
+  remain neutral white. This is an evidence baseline, not a claim that the
+  stock placeholder assets are production HD/4K quality.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
   first Sovereign organization checkpoint merge.
@@ -8054,3 +8057,67 @@ Conclusion:
 - The next production-art step should replace these placeholder masks with
   purpose-built unit assets and masks, especially the cart/villager placeholder
   where the mask currently covers the whole wood texture.
+
+## Completed Slice 91 — Metal Team-Color Mask Rendering Proof
+
+Goal:
+
+- Make the validated Sovereign unit masks render in the actual Metal gameplay
+  path instead of existing only as asset metadata.
+- Preserve the user's visual direction: selection rings stay neutral white and
+  thin; faction readability comes from unit materials, not selection markers.
+
+Implementation:
+
+- Added `team_color` to static and animated render-state records.
+- Populated render-state team color from the entity faction color in
+  `g_make_draw_list()`.
+- Added Metal team-mask texture arrays loaded by sibling texture convention:
+  a material texture such as `Knight.png` or `wood.jpg` can have
+  `Knight_team_mask.png` or `wood_team_mask.png` beside it.
+- Added Metal fragment shader blending that tints only masked texels with the
+  current entity faction color while preserving source texture luminance. The
+  shader treats RGB mask intensity as coverage, so normal opaque PNG alpha does
+  not accidentally tint the full texture.
+- Split Metal static and animated batches by team color, so mixed-faction
+  groups are not drawn with the wrong tint.
+- Renamed the cart placeholder mask reference to `wood_team_mask.png` so it
+  matches the renderer lookup convention.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-team-mask-rendered-rgb \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=3 production_ready=3 pending_team_masks=0
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=3
+asset_readability.pending_team_masks=0
+asset_readability.warnings=0
+```
+
+Conclusion:
+
+- Team-color masks are now an actual Metal-rendered gameplay feature for the
+  current placeholder unit pack.
+- The proof capture shows red/blue faction-tinted bodies while selection rings
+  remain neutral white.
+- This closes the current mask-rendering proof; final production art still
+  needs purpose-built high-clarity unit textures and masks.

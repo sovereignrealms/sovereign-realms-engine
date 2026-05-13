@@ -67,7 +67,10 @@ struct render_private{
     void               *metal_anim_vertex_buffer;
     void               *metal_material_texture_array;
     size_t              metal_material_texture_count;
+    void               *metal_team_mask_texture_array;
+    size_t              metal_team_mask_texture_count;
     bool                metal_materials_have_cutout_alpha;
+    bool                metal_team_masks_available;
     char                metal_asset_basedir[512];
 #endif
 };
