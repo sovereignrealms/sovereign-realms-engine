@@ -57,3 +57,15 @@ The first proof mask is `assets/models/knight/Knight_team_mask.png`, used by
 the placeholder Sovereign `militia` entry. It covers the existing Knight
 texture's blue shield and cloth/paint regions and is meant as a pipeline proof,
 not final Sovereign infantry art.
+
+The current placeholder pack also includes:
+
+- `assets/models/mage/Mage_team_mask.png` for the placeholder `archer`, covering
+  the Mage texture's purple garment and cape regions.
+- `assets/models/cart/cart_team_mask.png` for the placeholder `villager`,
+  covering the whole tiled wood texture because the cart asset has no separate
+  clothing or paint region.
+
+These masks make the current strict gate green, but final Sovereign unit art
+should replace the placeholder Knight/Mage/cart assets with purpose-built
+team-color regions.

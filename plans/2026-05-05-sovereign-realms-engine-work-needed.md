@@ -188,8 +188,11 @@ file records execution status as slices are completed and verified.
   production readiness until real team-color masks exist. A first one-unit
   team-color-mask proof is also DONE for the militia/Knight placeholder:
   `Knight_team_mask.png` validates at 512x512 and the scoped strict gate passes
-  for `militia`. This is an evidence baseline, not a claim that the stock
-  placeholder assets are production HD/4K quality.
+  for `militia`. Full current-pack strict readiness is now DONE as well:
+  Mage/archer and cart/villager masks were added, and the strict readability
+  gate reports `production_ready=3 pending_team_masks=0`. This is an evidence
+  baseline, not a claim that the stock placeholder assets are production HD/4K
+  quality.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
   first Sovereign organization checkpoint merge.
@@ -7967,3 +7970,87 @@ Conclusion:
   passes the unit-scoped strict readability gate.
 - The whole pack remains correctly blocked by full strict validation until
   the villager/cart and archer/Mage placeholder masks are replaced or completed.
+
+## Completed Slice 90 — Current Unit Pack Team-Color Mask Gate
+
+Goal:
+
+- Complete the current placeholder unit-pack mask coverage so the full strict
+  readability gate can go green.
+- Keep the distinction clear: this is a mask-pipeline/readability proof for
+  current placeholders, not final HD/4K unit art.
+
+Implementation:
+
+- Added `assets/models/mage/Mage_team_mask.png`.
+  - source texture: `assets/models/mage/Mage.png`
+  - dimensions: 512x512
+  - mask coverage from existing purple garment and cape regions: 61,699
+    pixels, about 23.536% of the texture
+- Added `assets/models/cart/cart_team_mask.png`.
+  - source texture: `assets/models/cart/wood.jpg`
+  - dimensions: 280x280
+  - mask coverage: whole texture, because the placeholder cart has one tiled
+    wood material and no separate team-color paint/clothing region
+- Changed Sovereign `archer` and `villager` readability metadata from
+  `pending_mask` to `texture_mask`.
+- Extended readability texture-size validation to read JPEG dimensions, so PNG
+  masks can be checked against JPEG source textures such as `wood.jpg`.
+- Updated docs to state that the current placeholder pack now passes strict
+  validation, while final production art still needs purpose-built team-color
+  regions.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/sovereign/factory.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+```
+
+Strict pack gate:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=3 production_ready=3 pending_team_masks=0
+```
+
+Runtime/proof checks:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_factory_probe.py \
+  --output-dir qa-output/sovereign-readability-full-mask-factory
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-full-mask \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_FACTORY_PROBE_PASS backend=METAL entities=10 units=3 buildings=3 resources=4
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=3
+asset_readability.pending_team_masks=0
+asset_readability.warnings=0
+archer.team_color_mask_size=[512, 512]
+militia.team_color_mask_size=[512, 512]
+villager.team_color_mask_size=[280, 280]
+```
+
+Conclusion:
+
+- The current Sovereign placeholder unit pack now has complete team-color mask
+  coverage and passes full strict readability validation.
+- The next production-art step should replace these placeholder masks with
+  purpose-built unit assets and masks, especially the cart/villager placeholder
+  where the mask currently covers the whole wood texture.

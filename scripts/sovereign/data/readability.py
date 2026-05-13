@@ -40,6 +40,44 @@ def _png_dimensions(path):
     return struct.unpack(">II", header[16:24])
 
 
+def _jpeg_dimensions(path):
+    try:
+        with open(path, "rb") as infile:
+            data = infile.read()
+    except IOError:
+        return None
+    if len(data) < 4 or data[:2] != b"\xff\xd8":
+        return None
+    offset = 2
+    while offset + 9 < len(data):
+        if data[offset] != 0xff:
+            offset += 1
+            continue
+        marker = data[offset + 1]
+        offset += 2
+        while marker == 0xff and offset < len(data):
+            marker = data[offset]
+            offset += 1
+        if marker in (0xd8, 0xd9):
+            continue
+        if offset + 2 > len(data):
+            return None
+        length = struct.unpack(">H", data[offset:offset + 2])[0]
+        if length < 2 or offset + length > len(data):
+            return None
+        if marker in (0xc0, 0xc1, 0xc2):
+            if length < 7:
+                return None
+            height, width = struct.unpack(">HH", data[offset + 3:offset + 7])
+            return (width, height)
+        offset += length
+    return None
+
+
+def _image_dimensions(path):
+    return _png_dimensions(path) or _jpeg_dimensions(path)
+
+
 def _unit_texture_path(unit, basedir):
     asset_path = _unit_asset_path(unit, basedir)
     asset_dir = _unit_asset_dir(unit, basedir)
@@ -104,7 +142,7 @@ def _validate_unit(unit_id, unit, basedir):
             else:
                 mask_dims = _png_dimensions(mask_path)
                 texture_path = _unit_texture_path(unit, basedir)
-                texture_dims = _png_dimensions(texture_path) if texture_path else None
+                texture_dims = _image_dimensions(texture_path) if texture_path else None
                 if not mask_dims:
                     errors.append("unit '{0}' team-color mask is not a PNG: {1}".format(unit_id, mask_path))
                 elif texture_dims and mask_dims != texture_dims:

@@ -101,11 +101,17 @@ team-color-mask and far-view silhouette readiness. Normal mode allows current
 placeholder units to report pending masks; strict mode is the production gate
 once final unit art is expected.
 
-The first mask proof is in place for `militia` via
-`assets/models/knight/Knight_team_mask.png`. Use
-`tools/asset_validation/validate_sovereign_readability.py --unit militia --strict`
-as the single-unit gate while other placeholder units still report pending
-masks.
+The current placeholder unit pack now has mask coverage for all three unit
+entries:
+
+- `militia`: `assets/models/knight/Knight_team_mask.png`
+- `archer`: `assets/models/mage/Mage_team_mask.png`
+- `villager`: `assets/models/cart/cart_team_mask.png`
+
+Use `tools/asset_validation/validate_sovereign_readability.py --strict` as the
+current pack-level gate. The cart mask is intentionally a placeholder
+whole-texture mask because the cart asset has no separate team-color region;
+final Sovereign villager art still needs a purpose-built clothing/tool mask.
 
 ## Gameplay Data Architecture
 

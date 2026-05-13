@@ -48,3 +48,7 @@ For incremental asset work, scope strict validation to a single unit:
 ```sh
 python3 tools/asset_validation/validate_sovereign_readability.py --unit militia --strict
 ```
+
+The current placeholder Sovereign unit pack is expected to pass full strict
+validation. New unit entries should not land with `pending_mask` unless the
+plan explicitly marks them as non-production placeholders.

@@ -33,6 +33,8 @@
 - Added asset-readability status to the HD/Retina readability proof summary.
 - Added the first real Sovereign team-color mask proof for the militia/Knight
   placeholder and a unit-scoped strict readability validation path.
+- Added placeholder team-color masks for archer/Mage and villager/cart so the
+  full Sovereign readability strict gate now passes for all current units.
 
 ## 2026-05-07
 
