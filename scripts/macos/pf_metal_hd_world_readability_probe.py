@@ -5,6 +5,7 @@ import struct
 import subprocess
 import sys
 import time
+import zlib
 
 import pf
 
@@ -23,6 +24,13 @@ ERROR_PATH = "/tmp/pf_metal_hd_world_readability_probe_error.txt"
 SPRITE_STATS_PATH = "/tmp/pf_metal_hd_world_readability_sprite_stats.txt"
 DEFAULT_OUTPUT_DIR = "visual_parity_captures/hd-world-readability-probe"
 CAPTURE_SETTLE_TICKS = 75
+METRIC_CROP_RATIOS = {
+    "close_character_lod_target": 0.42,
+    "dense_army_readability": 0.58,
+    "dense_forest_building_readability": 0.58,
+    "vfx_combat_readability": 0.52,
+    "wide_large_map_readability": 0.78,
+}
 
 EXPECTED_SPRITE_SHEETS = set((
     "projectile_trail.png",
@@ -137,6 +145,125 @@ def _png_size(path):
     return struct.unpack(">II", header[16:24])
 
 
+def _paeth(a, b, c):
+    p = a + b - c
+    pa = abs(p - a)
+    pb = abs(p - b)
+    pc = abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+
+def _png_luma_rows(path):
+    with open(path, "rb") as infile:
+        data = infile.read()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise RuntimeError("not a PNG: {0}".format(path))
+
+    pos = 8
+    width = height = bit_depth = color_type = interlace = None
+    idat = []
+    while pos < len(data):
+        length = struct.unpack(">I", data[pos:pos + 4])[0]
+        chunk_type = data[pos + 4:pos + 8]
+        chunk = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", chunk)
+        elif chunk_type == b"IDAT":
+            idat.append(chunk)
+        elif chunk_type == b"IEND":
+            break
+
+    if bit_depth != 8 or color_type not in (2, 6) or interlace != 0:
+        raise RuntimeError(
+            "unsupported PNG format for metrics: bit_depth={0} color_type={1} interlace={2}".format(
+                bit_depth, color_type, interlace))
+
+    channels = 3 if color_type == 2 else 4
+    bpp = channels
+    stride = width * channels
+    raw = zlib.decompress(b"".join(idat))
+    rows = []
+    prev = [0] * stride
+    src = 0
+    for _ in range(height):
+        filt = raw[src]
+        src += 1
+        scan = list(raw[src:src + stride])
+        src += stride
+        recon = [0] * stride
+        for i, value in enumerate(scan):
+            left = recon[i - bpp] if i >= bpp else 0
+            up = prev[i]
+            up_left = prev[i - bpp] if i >= bpp else 0
+            if filt == 0:
+                out = value
+            elif filt == 1:
+                out = value + left
+            elif filt == 2:
+                out = value + up
+            elif filt == 3:
+                out = value + ((left + up) >> 1)
+            elif filt == 4:
+                out = value + _paeth(left, up, up_left)
+            else:
+                raise RuntimeError("unsupported PNG filter {0}".format(filt))
+            recon[i] = out & 0xff
+        rows.append([
+            int(0.2126 * recon[x] + 0.7152 * recon[x + 1] + 0.0722 * recon[x + 2])
+            for x in range(0, stride, channels)
+        ])
+        prev = recon
+    return width, height, rows
+
+
+def _central_crop_bounds(width, height, ratio):
+    crop_w = max(16, int(width * ratio))
+    crop_h = max(16, int(height * ratio))
+    x0 = max(0, (width - crop_w) // 2)
+    y0 = max(0, (height - crop_h) // 2)
+    return x0, y0, crop_w, crop_h
+
+
+def _image_metrics(path, crop_ratio):
+    width, height, rows = _png_luma_rows(path)
+    x0, y0, crop_w, crop_h = _central_crop_bounds(width, height, crop_ratio)
+    values = []
+    gradients = []
+    for y in range(y0, y0 + crop_h):
+        row = rows[y]
+        for x in range(x0, x0 + crop_w):
+            value = row[x]
+            values.append(value)
+            if x + 1 < x0 + crop_w and y + 1 < y0 + crop_h:
+                gx = abs(row[x + 1] - value)
+                gy = abs(rows[y + 1][x] - value)
+                gradients.append(gx + gy)
+
+    mean = sum(values) / float(len(values)) if values else 0.0
+    variance = sum((value - mean) * (value - mean) for value in values) / float(len(values)) if values else 0.0
+    sorted_gradients = sorted(gradients)
+    p95_idx = int(0.95 * (len(sorted_gradients) - 1)) if sorted_gradients else 0
+    edge_threshold = 18
+    edge_density = (
+        sum(1 for gradient in gradients if gradient >= edge_threshold) / float(len(gradients))
+        if gradients else 0.0
+    )
+    return {
+        "crop_bounds": [x0, y0, crop_w, crop_h],
+        "crop_ratio": crop_ratio,
+        "luma_mean": round(mean, 3),
+        "luma_stddev": round(math.sqrt(variance), 3),
+        "edge_density": round(edge_density, 6),
+        "edge_threshold": edge_threshold,
+        "gradient_p95": int(sorted_gradients[p95_idx]) if sorted_gradients else 0,
+    }
+
+
 def _png_nonblank(path):
     checker = os.path.join(pf.get_basedir(), "scripts/macos/check_png_nonblank.py")
     try:
@@ -215,9 +342,30 @@ def _capture(scene):
     width, height = _png_size(path)
     camera = STATE["camera"]
     target = STATE["targets"][scene["target"]]
+    crop_ratio = METRIC_CROP_RATIOS.get(scene["name"], 0.5)
+    metrics = _image_metrics(path, crop_ratio)
+    crop_path = os.path.join(
+        STATE["output_dir"], "metal_hd_world_{0}_crop.png".format(scene["name"]))
+    bounds = metrics["crop_bounds"]
+    subprocess.run(
+        [
+            "/usr/bin/sips",
+            "-c", str(bounds[3]), str(bounds[2]),
+            "--cropOffset", str(bounds[1]), str(bounds[0]),
+            path,
+            "--out", crop_path,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10.0,
+    )
+    if not os.path.exists(crop_path) or not _png_nonblank(crop_path):
+        crop_path = None
+
     record = {
         "name": scene["name"],
         "path": path,
+        "crop_path": crop_path,
         "size": [width, height],
         "target": [target[0], target[1]],
         "camera_position": list(camera.position),
@@ -227,9 +375,12 @@ def _capture(scene):
         "yaw": scene["yaw"],
         "selected_units": len(pf.get_unit_selection()),
         "fog_of_war": bool(scene.get("fog_of_war", False)),
+        "readability_metrics": metrics,
     }
     STATE["captures"].append(record)
-    print("HD_WORLD_READABILITY_CAPTURE {0} {1} {2}x{3}".format(scene["name"], path, width, height))
+    print(
+        "HD_WORLD_READABILITY_CAPTURE {0} {1} {2}x{3} edge_density={4:.4f} gradient_p95={5}".format(
+            scene["name"], path, width, height, metrics["edge_density"], metrics["gradient_p95"]))
     sys.stdout.flush()
     return path
 
@@ -285,6 +436,12 @@ def _write_summary(status, reason=None):
         },
         "sprite_stats": STATE["sprite_stats"],
         "captures": STATE["captures"],
+        "readability_contract": {
+            "close_zoom": "center-crop detail metrics and crop image for character-level visual review",
+            "wide_zoom": "large center-crop detail metrics and crop image for army/map readability review",
+            "retina": "capture dimensions must exceed logical window resolution on high-DPI displays",
+            "note": "metrics are evidence gates for regression tracking, not proof of final HD/4K art quality",
+        },
         "current_limitations": [
             "stock low-poly character meshes are readable but not HD/4K close-zoom quality",
             "wide views show repeated terrain texture patterns and sparse biome variation",

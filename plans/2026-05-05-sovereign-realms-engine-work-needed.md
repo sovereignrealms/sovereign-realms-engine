@@ -176,6 +176,11 @@ file records execution status as slices are completed and verified.
   spikes occur in both dense-cadence and conservative modes, mostly during
   sustained soak, so the instability is dense-battle scheduling/ClearPath
   pressure rather than the seek-cadence policy by itself.
+- Phase 10 HD/Retina readability proof: DONE for the first metric-backed
+  close-zoom and wide-zoom capture gate. The HD world readability probe now
+  records center crops, Retina scale, luma/detail metrics, and wide/close
+  proof captures. This is an evidence baseline, not a claim that the stock
+  placeholder assets are production HD/4K quality.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
   first Sovereign organization checkpoint merge.
@@ -4181,7 +4186,9 @@ Rough status against the ten-phase plan:
   budget 1000+ unit tuning, or open-ended strategic play.
 - Phase 10: performance, Retina clarity, HD/4K assets, large-map benchmarks,
   1000+ production-budget benchmarks, and production polish remain the largest
-  open area.
+  open area. A first metric-backed HD/Retina readability gate now exists for
+  regression tracking, but production assets and final readability art
+  direction remain open.
 
 Overall: the technical vertical-slice scaffold is roughly 95-97% complete for
 an MVP skirmish foundation. It is not yet production-game-ready because real
@@ -4190,8 +4197,8 @@ benchmarking, and HD/Retina presentation still need focused slices.
 
 Status by plan shape:
 
-- Latest execution slices: 85 completed or rejected execution slices are
-  recorded through the ClearPath x-point candidate-reduction experiments.
+- Latest execution slices: 86 completed or rejected execution slices are
+  recorded through the first HD/Retina readability proof gate.
 - Current-status checklist: all listed implementation items are marked DONE,
   including the first GitHub organization push/merge.
 - Ten-phase production roadmap: Phases 0-9 have MVP scaffolding/probes in
@@ -7605,3 +7612,71 @@ Conclusion:
 - Do not re-test projection-first, accepted-candidate caps, or naive pair caps
   unless a new ordering/selection argument is added; those variants have now
   been rejected.
+
+## Completed Slice 86 — HD/Retina Readability Proof Gate
+
+Goal:
+
+- Move Phase 10 readability work from subjective screenshot review to a
+  repeatable proof gate for close-zoom characters, dense armies, world props,
+  VFX combat, and wide-zoom map/army readability.
+
+Implementation:
+
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` with
+  stdlib PNG luma decoding for objective capture metrics.
+- Each captured scene now records:
+  - center-crop bounds and crop ratio
+  - luma mean and standard deviation
+  - edge-density against a fixed gradient threshold
+  - p95 local luma-gradient value
+  - a saved center-crop PNG for visual review
+- Added a `readability_contract` section to the summary JSON to make clear
+  that these metrics are regression/evidence gates, not final HD/4K art-quality
+  certification.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+```
+
+```sh
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-proof \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+HD_WORLD_READABILITY_PASS backend=METAL captures=5 highdpi=1 staged=108
+sprite_sheets=fire_loop.png,impact_burst.png,projectile_trail.png,smoke_puff.png
+summary: visual_parity_captures/2026-05-13-hd-retina-readability-proof/summary_hd_world_readability.json
+retina_scale: [2.0, 2.0]
+capture size: 3456x2234 for all scenes
+```
+
+Per-scene metrics:
+
+```text
+close_character_lod_target:        edge_density=0.140209 gradient_p95=34 luma_stddev=64.067
+dense_army_readability:           edge_density=0.317067 gradient_p95=51 luma_stddev=50.001
+dense_forest_building_readability edge_density=0.332284 gradient_p95=56 luma_stddev=44.159
+vfx_combat_readability:           edge_density=0.336208 gradient_p95=60 luma_stddev=54.729
+wide_large_map_readability:       edge_density=0.113488 gradient_p95=25 luma_stddev=33.970
+```
+
+Conclusion:
+
+- The Metal runtime is capturing at Retina scale and the proof harness now
+  stores both full-size screenshots and centered review crops.
+- Current placeholder units/world assets are readable enough for regression
+  evidence, but they are not yet the final HD/4K production-art target.
+- The next Phase 10 content slice should improve actual production readability:
+  stronger unit silhouettes/team color at close zoom, wider-view army markers
+  or LOD rules, and terrain/biome texture variation for large maps.

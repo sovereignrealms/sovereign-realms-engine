@@ -524,7 +524,11 @@ fallback remains the pressure point, but no default fallback-policy change
 landed because the tested batch-removal variants were either too aggressive or
 unstable across verification runs. A 500-unit GPU-skinning capture-proof pass
 now records before/engage/soak/wide-zoom screenshots at 3456x2234 for visual
-hardening.
+hardening. The HD world readability probe now adds Retina-scale close/wide
+proof captures, centered review crops, and luma/edge metrics for close
+characters, dense armies, world props, VFX combat, and wide-map readability.
+These are regression evidence gates; real production HD/4K asset quality still
+requires new character, building, terrain, and UI content.
 
 Measure frame time, sim time, render time, pathfinding time, animation batch
 size, projectile count, fog/minimap update cost, Metal GPU time where available,

@@ -10,6 +10,12 @@
 - Updated the active Sovereign plan to mark the organization push/merge done
   and to point the next production work toward Phase 10 scale, HD/Retina, and
   production-content slices.
+- Extended the HD world readability probe with center-crop capture artifacts
+  and objective luma/edge metrics for close-zoom characters, dense armies,
+  world props, VFX combat, and wide-zoom map readability.
+- Captured the first Phase 10 HD/Retina readability proof at 3456x2234
+  high-DPI resolution with 2x Retina scale, five full screenshots, five review
+  crops, and per-scene detail metrics.
 
 ## 2026-05-07
 
