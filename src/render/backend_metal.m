@@ -6316,6 +6316,12 @@ static void render_screenspace_rect(float left, float top, float right, float bo
     render_screenspace_colored_triangles(verts, sizeof(verts) / sizeof(verts[0]), color);
 }
 
+static float healthbar_zoom_scale(const struct camera *cam)
+{
+    const float cam_height = fmaxf(Camera_GetHeight(cam), 1.0f);
+    return SDL_clamp(160.0f / cam_height, 0.22f, 1.0f);
+}
+
 static void render_healthbars(const size_t *num_ents, GLfloat *ent_health_pc,
                               vec3_t *ent_top_pos_ws, int *yoffsets,
                               const struct camera *cam)
@@ -6332,9 +6338,10 @@ static void render_healthbars(const size_t *num_ents, GLfloat *ent_health_pc,
     Camera_MakeViewMat(cam, &view);
     Camera_MakeProjMat(cam, &proj);
 
-    const float half_h = fmaxf(4.0f / 1080.0f * height, 4.0f);
-    const float half_w = 40.0f / 1080.0f * height;
-    const float border = 2.0f;
+    const float zoom_scale = healthbar_zoom_scale(cam);
+    const float half_h = fmaxf(4.0f / 1080.0f * height * zoom_scale, 2.0f);
+    const float half_w = fmaxf(40.0f / 1080.0f * height * zoom_scale, 10.0f);
+    const float border = fmaxf(2.0f * zoom_scale, 1.0f);
     const vec3_t bg = {0.0f, 0.0f, 0.0f};
 
     for(size_t i = 0; i < *num_ents; i++) {

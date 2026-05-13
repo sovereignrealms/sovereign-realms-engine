@@ -5,3 +5,4 @@
 - If the user narrows scope to Apple Silicon polish for the existing game, keep HFMP fork work and Metal support deferred until that polish phase is explicitly complete.
 - In the Metal migration, prefer the smallest visible gameplay-feedback slice first; wire world selection overlays before attempting drag-box or minimap work.
 - For Metal visual parity captures, keep staged water-edge units and rocks/static props in the evidence loop; do not judge water or mesh parity from empty scenery-only screenshots.
+- Keep player selection rings neutral white and thin; do not make them saturated team-colored or thick for readability. Wide-zoom readability should come from small zoom-scaled healthbars, silhouettes, LOD/icon rules, and asset-side team-color work.

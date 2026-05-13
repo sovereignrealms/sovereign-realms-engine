@@ -16,13 +16,14 @@
 - Captured the first Phase 10 HD/Retina readability proof at 3456x2234
   high-DPI resolution with 2x Retina scale, five full screenshots, five review
   crops, and per-scene detail metrics.
-- Improved production readability overlays for selected units: player-owned
-  selection markers now render in saturated Sovereign blue with a thicker
-  world ring, and the Metal backend now routes world-colored selection strips
-  through the native color pipeline instead of the lit static-material path.
-- Extended the HD/Retina readability probe with paired close/wide marked
-  scenes so blue team/silhouette markers can be compared against unmarked
-  baseline captures.
+- Kept player selection markers neutral white and thin, and fixed the Metal
+  world-color overlay path so selection strips preserve their intended color
+  instead of being washed through static-material lighting.
+- Added zoom-scaled healthbars so wide map views use much smaller bars instead
+  of covering large portions of the screen.
+- Extended the HD/Retina readability probe with paired close/wide status
+  scenes so healthbar and selection readability can be compared against
+  unmarked baseline captures.
 
 ## 2026-05-07
 

@@ -180,9 +180,9 @@ file records execution status as slices are completed and verified.
   close-zoom and wide-zoom capture gate. The HD world readability probe now
   records center crops, Retina scale, luma/detail metrics, and wide/close
   proof captures. A first actual readability overlay slice is also DONE:
-  selected player-owned units now use a thicker saturated Sovereign-blue marker
-  and the Metal backend renders world-color overlays through the native color
-  pipeline. This is an evidence baseline, not a claim that the stock
+  selected player-owned units keep neutral white thin rings, Metal world-color
+  overlays render through the native color pipeline, and healthbars shrink on
+  wide zoom. This is an evidence baseline, not a claim that the stock
   placeholder assets are production HD/4K quality.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
@@ -7684,29 +7684,35 @@ Conclusion:
   stronger unit silhouettes/team color at close zoom, wider-view army markers
   or LOD rules, and terrain/biome texture variation for large maps.
 
-## Completed Slice 87 — Selection Marker Team-Color Readability
+## Completed Slice 87 — Neutral Selection And Zoom-Scaled Healthbars
 
 Goal:
 
 - Improve actual close-zoom and wide-zoom unit readability using existing
   engine overlays before starting a full HD asset replacement pass.
+- Restore the user's preferred neutral white thin selection-ring style while
+  making healthbars scale down at wide zoom.
 
 Implementation:
 
-- Changed player-owned selection markers from neutral white to saturated
-  Sovereign blue.
-- Increased the selected-unit world marker width from `0.4` to `0.65` so
-  selected units remain easier to identify at Retina close zoom and wider map
-  views.
+- Restored player-owned selection markers to neutral white.
+- Restored selected-unit world marker width to the thin `0.4` style.
 - Fixed the Metal world-color overlay path used by selection circles,
   selection rectangles, and world lines: it now uses the existing Metal
   world-color pipeline instead of the lit static-mesh material pipeline, so
   marker colors render faithfully instead of being washed to grey.
+- Added camera-height scaling to healthbars in both Metal and OpenGL:
+  - close/normal views keep readable bars
+  - high/wide views shrink bars down to a compact minimum
+  - Metal also scales border thickness with the bar size
+- Updated the OpenGL statusbar shader minimum height so the OpenGL reference
+  path follows the same wide-zoom shrinking rule.
 - Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` with:
-  - `close_character_team_readability`
-  - `wide_army_marked_readability`
+  - `close_character_status_readability`
+  - `wide_army_status_readability`
   - paired metric deltas between unmarked/marked close and wide captures
-  - explicit readability-contract notes for selection/team markers
+  - explicit readability-contract notes for neutral selection markers and
+    zoom-scaled healthbars
 
 Verification:
 
@@ -7722,7 +7728,7 @@ make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
 
 ```sh
 ./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
-  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-markers-final \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-neutral-healthbars \
   --expect-backend METAL
 ```
 
@@ -7731,28 +7737,28 @@ Observed:
 ```text
 HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
 sprite_sheets=fire_loop.png,impact_burst.png,projectile_trail.png,smoke_puff.png
-summary: visual_parity_captures/2026-05-13-hd-retina-readability-markers-final/summary_hd_world_readability.json
+summary: visual_parity_captures/2026-05-13-hd-retina-readability-neutral-healthbars/summary_hd_world_readability.json
 retina_scale: [2.0, 2.0]
 ```
 
 Final per-scene metrics:
 
 ```text
-close_character_lod_target:         edge_density=0.1340 gradient_p95=32
-close_character_team_readability:   edge_density=0.1388 gradient_p95=34
-dense_army_readability:             edge_density=0.3248 gradient_p95=59
+close_character_lod_target:         edge_density=0.1372 gradient_p95=33
+close_character_status_readability: edge_density=0.1420 gradient_p95=34
+dense_army_readability:             edge_density=0.3269 gradient_p95=58
 dense_forest_building_readability:  edge_density=0.3323 gradient_p95=56
-vfx_combat_readability:             edge_density=0.3416 gradient_p95=65
-wide_large_map_readability:         edge_density=0.1136 gradient_p95=25
-wide_army_marked_readability:       edge_density=0.1139 gradient_p95=25
+vfx_combat_readability:             edge_density=0.3423 gradient_p95=66
+wide_large_map_readability:         edge_density=0.1133 gradient_p95=25
+wide_army_status_readability:       edge_density=0.1160 gradient_p95=26
 ```
 
 Conclusion:
 
-- Close-zoom marker proof now shows player-owned selected units with a visible
-  blue team-color ring and healthbar context.
-- Wide-zoom marker proof now shows selected friendly cohorts with blue markers
-  without healthbar clutter.
+- Close-zoom status proof keeps the neutral white thin selection style with
+  healthbar context.
+- Wide-zoom status proof now shows friendly cohorts with compact healthbars
+  instead of large bars that cover the army/map.
 - This improves selection/readability UX and fixes a real Metal overlay-color
   bug, but full production readability still needs asset-side team-color masks,
   clearer far-view silhouettes, LOD/icon rules, and richer biome/terrain art.

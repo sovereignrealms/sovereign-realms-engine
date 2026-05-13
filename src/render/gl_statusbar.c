@@ -51,11 +51,19 @@
 
 #define ARR_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MIN(a, b)   ((a) < (b) ? (a) : (b))
+#define MAX(a, b)   ((a) > (b) ? (a) : (b))
+#define CLAMP(v, minv, maxv) (MIN(MAX((v), (minv)), (maxv)))
 #define MAX_HBS     (256)
 
 /*****************************************************************************/
 /* EXTERN FUNCTIONS                                                          */
 /*****************************************************************************/
+
+static float healthbar_zoom_scale(const struct camera *cam)
+{
+    const float cam_height = MAX(Camera_GetHeight(cam), 1.0f);
+    return CLAMP(160.0f / cam_height, 0.22f, 1.0f);
+}
 
 void R_GL_DrawHealthbars_Impl(const size_t *num_ents, GLfloat *ent_health_pc,
                               vec3_t *ent_top_pos_ws, int *yoffsets,
@@ -138,11 +146,12 @@ void R_GL_DrawHealthbars_Impl(const size_t *num_ents, GLfloat *ent_health_pc,
     /* set uniforms */
     int w, h;
     Engine_WinDrawableSize(&w, &h);
+    float zoom_scale = healthbar_zoom_scale(cam);
 
     R_GL_StateSet(GL_U_CURR_RES, (struct uval){
         .type = UTYPE_IVEC2,
         .val.as_ivec2[0] = w,
-        .val.as_ivec2[1] = h
+        .val.as_ivec2[1] = MAX(1, (int)(h * zoom_scale))
     });
 
     size_t ndraw = MIN(*num_ents, MAX_HBS);

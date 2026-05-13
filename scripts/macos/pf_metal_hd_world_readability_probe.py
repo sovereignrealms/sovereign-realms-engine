@@ -26,12 +26,12 @@ DEFAULT_OUTPUT_DIR = "visual_parity_captures/hd-world-readability-probe"
 CAPTURE_SETTLE_TICKS = 75
 METRIC_CROP_RATIOS = {
     "close_character_lod_target": 0.42,
-    "close_character_team_readability": 0.42,
+    "close_character_status_readability": 0.42,
     "dense_army_readability": 0.58,
     "dense_forest_building_readability": 0.58,
     "vfx_combat_readability": 0.52,
     "wide_large_map_readability": 0.78,
-    "wide_army_marked_readability": 0.78,
+    "wide_army_status_readability": 0.78,
 }
 
 EXPECTED_SPRITE_SHEETS = set((
@@ -53,7 +53,7 @@ SCENES = (
         "healthbars": False,
     },
     {
-        "name": "close_character_team_readability",
+        "name": "close_character_status_readability",
         "target": "character_cluster",
         "height": 72.0,
         "pitch": -55.0,
@@ -104,14 +104,14 @@ SCENES = (
         "healthbars": False,
     },
     {
-        "name": "wide_army_marked_readability",
+        "name": "wide_army_status_readability",
         "target": "wide_world",
         "height": 900.0,
         "pitch": -67.0,
         "yaw": 135.0,
         "fog_of_war": False,
         "selection": "friendly_army",
-        "healthbars": False,
+        "healthbars": True,
     },
 )
 
@@ -471,8 +471,8 @@ def _write_summary(status, reason=None):
     STATE["sprite_stats"] = _read_sprite_stats()
     rule_deltas = []
     for before_name, after_name in (
-        ("close_character_lod_target", "close_character_team_readability"),
-        ("wide_large_map_readability", "wide_army_marked_readability"),
+        ("close_character_lod_target", "close_character_status_readability"),
+        ("wide_large_map_readability", "wide_army_status_readability"),
     ):
         delta = _metric_delta(before_name, after_name)
         if delta is not None:
@@ -496,14 +496,15 @@ def _write_summary(status, reason=None):
         "readability_contract": {
             "close_zoom": "center-crop detail metrics and crop image for character-level visual review",
             "wide_zoom": "large center-crop detail metrics and crop image for army/map readability review",
-            "selection_markers": "player-owned selected units use a saturated blue marker and wider ring for close/wide readability",
+            "selection_markers": "player-owned selected units keep neutral white thin rings for unobtrusive readability",
+            "healthbars": "healthbars shrink as camera height increases so wide views are not dominated by bars",
             "retina": "capture dimensions must exceed logical window resolution on high-DPI displays",
             "note": "metrics are evidence gates for regression tracking, not proof of final HD/4K art quality",
         },
         "readability_rule_deltas": rule_deltas,
         "current_limitations": [
             "stock low-poly character meshes are readable but not HD/4K close-zoom quality",
-            "team color is currently proven through selection/readability markers, not final unit material masks",
+            "team-color material masks and far-view silhouettes are still production-asset work",
             "wide views show repeated terrain texture patterns and sparse biome variation",
             "dense vegetation/building readability needs asset density, LOD, and silhouette rules",
             "VFX fixture sheets prove the rendering path but are not final production-quality effects",
