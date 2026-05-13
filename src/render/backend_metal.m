@@ -6044,75 +6044,23 @@ static bool render_shadow_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents
     return true;
 }
 
+static void render_world_colored_verts(const struct colored_vert *verts, size_t nverts,
+                                       MTLPrimitiveType primitive);
+
 static void render_world_colored_strip(const vec3_t *positions, size_t nverts, const vec3_t *color)
 {
-    id<MTLRenderPipelineState> pipeline = nil;
     if(!positions || !nverts || !color)
         return;
-    if(!s_have_scene_view || !s_have_scene_proj)
-        return;
 
-    struct vertex *verts = malloc(nverts * sizeof(*verts));
+    struct colored_vert *verts = malloc(nverts * sizeof(*verts));
     if(!verts)
         return;
-
     for(size_t i = 0; i < nverts; i++) {
         verts[i].pos = positions[i];
-        verts[i].uv = (vec2_t){0.0f, 0.0f};
-        verts[i].normal = (vec3_t){0.0f, 1.0f, 0.0f};
-        verts[i].material_idx = 0;
+        verts[i].color = (vec4_t){color->x, color->y, color->z, 1.0f};
     }
-
-    frame_begin();
-    if(!s_frame_encoder) {
-        free(verts);
-        return;
-    }
-    pipeline = ensure_static_mesh_pipeline(false, frame_uses_msaa(), false);
-    if(!pipeline) {
-        free(verts);
-        return;
-    }
-
-    id<MTLBuffer> vertex_buffer = [s_device newBufferWithBytes:verts
-        length:nverts * sizeof(*verts) options:MTLResourceStorageModeShared];
+    render_world_colored_verts(verts, nverts, MTLPrimitiveTypeTriangleStrip);
     free(verts);
-    if(!vertex_buffer)
-        return;
-
-    mat4x4_t identity;
-    PFM_Mat4x4_Identity(&identity);
-
-    struct metal_static_mesh_uniforms uniforms = {
-        .model = matrix_from_pf_mat4(&identity),
-        .view = s_scene_view,
-        .proj = s_scene_proj,
-        .view_pos = {s_scene_view_pos.x, s_scene_view_pos.y, s_scene_view_pos.z, 1.0f},
-        .ambient_color = {s_light_ambient.x, s_light_ambient.y, s_light_ambient.z, 1.0f},
-        .light_color = {s_light_color.x, s_light_color.y, s_light_color.z, 1.0f},
-        .light_pos = {s_light_pos.x, s_light_pos.y, s_light_pos.z, 1.0f},
-    };
-    for(size_t i = 0; i < MAX_MATERIALS; i++) {
-        uniforms.material_diffuse[i] = (vector_float4){color->x, color->y, color->z, 1.0f};
-        uniforms.material_ambient[i] = (vector_float4){1.0f, 0.0f, 0.0f, 0.0f};
-        uniforms.material_specular[i] = (vector_float4){0.0f, 0.0f, 0.0f, 0.0f};
-    }
-
-    id<MTLBuffer> uniform_buffer = [s_device newBufferWithBytes:&uniforms
-        length:sizeof(uniforms) options:MTLResourceStorageModeShared];
-    if(!uniform_buffer)
-        return;
-
-    [s_frame_encoder setRenderPipelineState:pipeline];
-    [s_frame_encoder setDepthStencilState:nil];
-    [s_frame_encoder setCullMode:MTLCullModeNone];
-    [s_frame_encoder setFrontFacingWinding:MTLWindingCounterClockwise];
-    [s_frame_encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
-    [s_frame_encoder setVertexBuffer:uniform_buffer offset:0 atIndex:1];
-    [s_frame_encoder setFragmentBuffer:uniform_buffer offset:0 atIndex:1];
-    [s_frame_encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                        vertexStart:0
-                        vertexCount:nverts];
 }
 
 static void render_world_colored_verts(const struct colored_vert *verts, size_t nverts,

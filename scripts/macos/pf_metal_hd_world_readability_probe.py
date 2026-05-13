@@ -26,10 +26,12 @@ DEFAULT_OUTPUT_DIR = "visual_parity_captures/hd-world-readability-probe"
 CAPTURE_SETTLE_TICKS = 75
 METRIC_CROP_RATIOS = {
     "close_character_lod_target": 0.42,
+    "close_character_team_readability": 0.42,
     "dense_army_readability": 0.58,
     "dense_forest_building_readability": 0.58,
     "vfx_combat_readability": 0.52,
     "wide_large_map_readability": 0.78,
+    "wide_army_marked_readability": 0.78,
 }
 
 EXPECTED_SPRITE_SHEETS = set((
@@ -49,6 +51,16 @@ SCENES = (
         "fog_of_war": False,
         "selection": "heroes",
         "healthbars": False,
+    },
+    {
+        "name": "close_character_team_readability",
+        "target": "character_cluster",
+        "height": 72.0,
+        "pitch": -55.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "heroes",
+        "healthbars": True,
     },
     {
         "name": "dense_army_readability",
@@ -89,6 +101,16 @@ SCENES = (
         "yaw": 135.0,
         "fog_of_war": False,
         "selection": None,
+        "healthbars": False,
+    },
+    {
+        "name": "wide_army_marked_readability",
+        "target": "wide_world",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "friendly_army",
         "healthbars": False,
     },
 )
@@ -410,6 +432,33 @@ def _read_sprite_stats():
     return sheets
 
 
+def _capture_by_name(name):
+    for record in STATE["captures"]:
+        if record["name"] == name:
+            return record
+    return None
+
+
+def _metric_delta(before_name, after_name):
+    before = _capture_by_name(before_name)
+    after = _capture_by_name(after_name)
+    if before is None or after is None:
+        return None
+    before_metrics = before["readability_metrics"]
+    after_metrics = after["readability_metrics"]
+    fields = ("edge_density", "gradient_p95", "luma_stddev")
+    deltas = {}
+    for field in fields:
+        deltas[field] = round(after_metrics[field] - before_metrics[field], 6)
+    return {
+        "before": before_name,
+        "after": after_name,
+        "selected_units_before": before["selected_units"],
+        "selected_units_after": after["selected_units"],
+        "metric_deltas": deltas,
+    }
+
+
 def _write_summary(status, reason=None):
     capture_sizes = [record["size"] for record in STATE["captures"]]
     window_resolution = STATE["window_resolution"]
@@ -420,6 +469,14 @@ def _write_summary(status, reason=None):
             for size in capture_sizes
         )
     STATE["sprite_stats"] = _read_sprite_stats()
+    rule_deltas = []
+    for before_name, after_name in (
+        ("close_character_lod_target", "close_character_team_readability"),
+        ("wide_large_map_readability", "wide_army_marked_readability"),
+    ):
+        delta = _metric_delta(before_name, after_name)
+        if delta is not None:
+            rule_deltas.append(delta)
     payload = {
         "status": status,
         "reason": reason,
@@ -439,11 +496,14 @@ def _write_summary(status, reason=None):
         "readability_contract": {
             "close_zoom": "center-crop detail metrics and crop image for character-level visual review",
             "wide_zoom": "large center-crop detail metrics and crop image for army/map readability review",
+            "selection_markers": "player-owned selected units use a saturated blue marker and wider ring for close/wide readability",
             "retina": "capture dimensions must exceed logical window resolution on high-DPI displays",
             "note": "metrics are evidence gates for regression tracking, not proof of final HD/4K art quality",
         },
+        "readability_rule_deltas": rule_deltas,
         "current_limitations": [
             "stock low-poly character meshes are readable but not HD/4K close-zoom quality",
+            "team color is currently proven through selection/readability markers, not final unit material masks",
             "wide views show repeated terrain texture patterns and sparse biome variation",
             "dense vegetation/building readability needs asset density, LOD, and silhouette rules",
             "VFX fixture sheets prove the rendering path but are not final production-quality effects",
@@ -693,6 +753,8 @@ def _selection_for(scene):
         return STATE["heroes"]
     if key == "army":
         return STATE["army"][:36]
+    if key == "friendly_army":
+        return [ent for ent in STATE["army"] if getattr(ent, "faction_id", None) == 1]
     if key == "combat":
         return STATE["combat"]
     return []
@@ -732,6 +794,9 @@ def _stage_probe():
     _setup_targets()
     _hide_probe_ui()
     pf.disable_fog_of_war()
+    pf.update_faction(1, "Sovereign Blue", (40, 90, 255, 255))
+    pf.update_faction(2, "Sovereign Red", (220, 50, 50, 255))
+    pf.settings_set("pf.game.healthbar_mode", int(pf.HB_MODE_ALWAYS), persist=False)
     pf.set_minimap_render_all_ents(False)
     pf.set_minimap_size(260)
     pf.set_simstate(pf.G_PAUSED_UI_RUNNING)

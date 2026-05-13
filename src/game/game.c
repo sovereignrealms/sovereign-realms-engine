@@ -2250,7 +2250,7 @@ void G_Render(void)
 
         uint32_t curr = vec_AT(selected, i);
         vec2_t curr_pos = G_Pos_GetXZ(curr);
-        const float width = 0.4f;
+        const float width = 0.65f;
         uint32_t flags = G_FlagsGet(curr);
 
         if(flags & ENTITY_FLAG_BUILDING) {

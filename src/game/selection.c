@@ -100,7 +100,7 @@ static uint32_t s_hovered_uid = NULL_UID;
 /*****************************************************************************/
 
 const vec3_t g_seltype_color_map[] = {
-    [SELECTION_TYPE_PLAYER] = {0.95f, 0.95f, 0.95f},
+    [SELECTION_TYPE_PLAYER] = {0.10f, 0.35f, 1.00f},
     [SELECTION_TYPE_ALLIED] = { 0.0f,  1.0f,  0.0f},
     [SELECTION_TYPE_ENEMY]  = { 1.0f,  0.0f,  0.0f}
 };

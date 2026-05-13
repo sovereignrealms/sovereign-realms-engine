@@ -527,6 +527,11 @@ now records before/engage/soak/wide-zoom screenshots at 3456x2234 for visual
 hardening. The HD world readability probe now adds Retina-scale close/wide
 proof captures, centered review crops, and luma/edge metrics for close
 characters, dense armies, world props, VFX combat, and wide-map readability.
+The first production-readability overlay rule is also in place: selected
+player-owned units use a saturated Sovereign-blue world marker with a thicker
+ring, and the Metal backend renders those world-color overlays through the
+native color pipeline so the marker color is not lost through static-material
+lighting.
 These are regression evidence gates; real production HD/4K asset quality still
 requires new character, building, terrain, and UI content.
 
