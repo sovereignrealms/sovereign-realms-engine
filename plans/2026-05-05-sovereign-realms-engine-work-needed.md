@@ -4212,8 +4212,8 @@ benchmarking, and HD/Retina presentation still need focused slices.
 
 Status by plan shape:
 
-- Latest execution slices: 86 completed or rejected execution slices are
-  recorded through the first HD/Retina readability proof gate.
+- Latest execution slices: 95 completed or rejected execution slices are
+  recorded through the wide-zoom army readability policy evidence gate.
 - Current-status checklist: all listed implementation items are marked DONE,
   including the first GitHub organization push/merge.
 - Ten-phase production roadmap: Phases 0-9 have MVP scaffolding/probes in
@@ -8338,3 +8338,88 @@ Next:
 - Continue wide-zoom readability with far-view silhouette/grouping evidence:
   selected army group readability, damaged-unit visibility, and whether
   clustered armies need strategic group markers at very high zoom.
+
+## Completed Slice 95 — Wide Army Status Evidence
+
+Goal:
+
+- Prove the wide-zoom healthbar policy with explicit no-bar, damaged-only, and
+  selected-army captures.
+- Keep selected markers neutral and thin, while checking whether damaged or
+  selected units remain readable without full-health bar clutter.
+- Use the result to decide whether strategic group markers are needed later.
+
+Implementation:
+
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` from seven
+  to ten captures.
+- Added three wide army evidence scenes:
+  - `wide_army_no_status_readability`: no selection, no healthbars.
+  - `wide_army_damaged_status_readability`: no selection, healthbars on, with
+    five staged damaged army units.
+  - `wide_army_selected_status_readability`: friendly army selected,
+    healthbars on.
+- Added `damaged_army` staging so the probe can distinguish damaged-only bars
+  from selected-unit bars.
+- Added per-capture `expected_bar_sources` to the summary so future regressions
+  can tell whether a wide-view status bar should come from selected, damaged,
+  or full-health unselected units.
+- Added readability rule deltas for damaged-only and selected-army wide status
+  captures.
+- During verification, a `1300` and then `1050` camera-height framing attempt
+  mostly captured sky/far-map edge, so the shipped evidence scene uses the
+  highest useful current proof height, `900`, targeting the army cluster. This
+  keeps the evidence about army readability rather than skybox coverage.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-wide-army-status-modes \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=10 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-wide-army-status-modes/`.
+- Retina capture scale remained `[2.0, 2.0]`.
+- Staged counts: `army=48`, `combat=14`, `heroes=6`,
+  `damaged_army=5`, `entities=108`.
+- Wide status deltas remain very small:
+  - wide selected-army status: `edge_density +0.000644`,
+    `gradient_p95 +0`, `luma_stddev +0.037`.
+  - damaged-only army status: `edge_density -0.000083`,
+    `gradient_p95 +0`, `luma_stddev +0.007`.
+  - selected-army status over the army cluster: `edge_density +0.000391`,
+    `gradient_p95 +0`, `luma_stddev +0.031`.
+- Expected bar sources are now explicit in the summary:
+  - no-bar baseline: selected `0`, damaged `0`, full-health unselected `0`.
+  - damaged-only: selected `0`, damaged `5`, full-health unselected `0`.
+  - selected army: selected `24`, damaged `0`, full-health unselected `0`.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Conclusion:
+
+- The current wide-zoom policy is evidence-backed: damaged and selected units
+  can surface status without turning every full-health unit into a screen-wide
+  bar field.
+- The next readability work should not make selection rings thicker or recolor
+  them. If larger maps still need extra readability, prototype subtle
+  strategic group markers as a separate opt-in layer at very high zoom.
+
+Next:
+
+- Either prototype subtle far-view group markers, or move to production
+  readability content: real unit silhouettes, terrain/biome richness, and
+  higher-quality close/wide unit assets.

@@ -34,6 +34,9 @@ METRIC_CROP_RATIOS = {
     "vfx_combat_readability": 0.52,
     "wide_large_map_readability": 0.78,
     "wide_army_status_readability": 0.78,
+    "wide_army_no_status_readability": 0.82,
+    "wide_army_damaged_status_readability": 0.82,
+    "wide_army_selected_status_readability": 0.82,
 }
 
 EXPECTED_SPRITE_SHEETS = set((
@@ -115,6 +118,36 @@ SCENES = (
         "selection": "friendly_army",
         "healthbars": True,
     },
+    {
+        "name": "wide_army_no_status_readability",
+        "target": "army_cluster",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": None,
+        "healthbars": False,
+    },
+    {
+        "name": "wide_army_damaged_status_readability",
+        "target": "army_cluster",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": None,
+        "healthbars": True,
+    },
+    {
+        "name": "wide_army_selected_status_readability",
+        "target": "army_cluster",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "friendly_army",
+        "healthbars": True,
+    },
 )
 
 STATE = {
@@ -131,6 +164,7 @@ STATE = {
     "heroes": [],
     "army": [],
     "combat": [],
+    "damaged_army": [],
     "vfx_spawned": False,
     "sprite_stats": {},
 }
@@ -398,12 +432,14 @@ def _capture(scene):
         "pitch": scene["pitch"],
         "yaw": scene["yaw"],
         "selected_units": len(pf.get_unit_selection()),
+        "damaged_units": len(STATE["damaged_army"]),
         "fog_of_war": bool(scene.get("fog_of_war", False)),
         "healthbar_policy": {
             "requested": bool(scene.get("healthbars", False)),
             "wide_zoom_policy": scene["height"] >= WIDE_HEALTHBAR_POLICY_HEIGHT,
             "wide_zoom_height": WIDE_HEALTHBAR_POLICY_HEIGHT,
             "wide_zoom_rule": "selected_or_damaged_only",
+            "expected_bar_sources": _expected_healthbar_sources(scene),
         },
         "readability_metrics": metrics,
     }
@@ -481,6 +517,8 @@ def _write_summary(status, reason=None):
     for before_name, after_name in (
         ("close_character_lod_target", "close_character_status_readability"),
         ("wide_large_map_readability", "wide_army_status_readability"),
+        ("wide_army_no_status_readability", "wide_army_damaged_status_readability"),
+        ("wide_army_no_status_readability", "wide_army_selected_status_readability"),
     ):
         delta = _metric_delta(before_name, after_name)
         if delta is not None:
@@ -498,6 +536,7 @@ def _write_summary(status, reason=None):
             "heroes": len(STATE["heroes"]),
             "army": len(STATE["army"]),
             "combat": len(STATE["combat"]),
+            "damaged_army": len(STATE["damaged_army"]),
         },
         "sprite_stats": STATE["sprite_stats"],
         "captures": STATE["captures"],
@@ -507,6 +546,7 @@ def _write_summary(status, reason=None):
             "selection_markers": "player-owned selected units keep neutral white thin rings for unobtrusive readability",
             "healthbars": "healthbars shrink as camera height increases so wide views are not dominated by bars",
             "wide_zoom_healthbar_policy": "above the wide-zoom height, full-health unselected units do not draw bars",
+            "wide_army_status_modes": "damaged-only and selected-army captures prove status readability without all-unit bar clutter",
             "retina": "capture dimensions must exceed logical window resolution on high-DPI displays",
             "note": "metrics are evidence gates for regression tracking, not proof of final HD/4K art quality",
         },
@@ -647,6 +687,19 @@ def _stage_army():
         STATE["army"].append(_make_unit(kind, "hd_probe_enemy_{0}".format(idx), _pathable_near(point), 2))
 
 
+def _damage_far_view_units():
+    candidates = [
+        ent for ent in STATE["army"]
+        if getattr(ent, "faction_id", None) == 1
+    ]
+    for ent in candidates[::5][:5]:
+        try:
+            ent.hp = max(1, int(ent.max_hp) // 2)
+            STATE["damaged_army"].append(ent)
+        except Exception:
+            pass
+
+
 def _stage_forest_and_buildings():
     center = STATE["targets"]["forest_cluster"]
     tree_specs = (
@@ -771,6 +824,25 @@ def _selection_for(scene):
     return []
 
 
+def _expected_healthbar_sources(scene):
+    if not scene.get("healthbars", False):
+        return {"selected": 0, "damaged": 0, "full_health_unselected": 0}
+
+    selection = _selection_for(scene)
+    selected_ids = set(id(ent) for ent in selection)
+    damaged_ids = set(id(ent) for ent in STATE["damaged_army"])
+    full_health_unselected = 0
+    if scene["height"] < WIDE_HEALTHBAR_POLICY_HEIGHT:
+        staged = len(STATE["army"]) + len(STATE["heroes"]) + len(STATE["combat"])
+        full_health_unselected = max(0, staged - len(selected_ids) - len(damaged_ids))
+
+    return {
+        "selected": len(selection),
+        "damaged": len(damaged_ids - selected_ids),
+        "full_health_unselected": full_health_unselected,
+    }
+
+
 def _place_camera(scene):
     target = STATE["targets"][scene["target"]]
     camera = STATE["camera"]
@@ -815,6 +887,7 @@ def _stage_probe():
     _setup_camera()
     _stage_characters()
     _stage_army()
+    _damage_far_view_units()
     _stage_forest_and_buildings()
     _stage_combat_units()
 
