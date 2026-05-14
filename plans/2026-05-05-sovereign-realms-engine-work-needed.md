@@ -8166,6 +8166,12 @@ make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
 ./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
   --output-dir visual_parity_captures/2026-05-14-hd-retina-aoe-team-color-scope-dummy \
   --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-aoe-team-color-scope-pass2 \
+  --expect-backend METAL
 ```
 
 Observed:
@@ -8175,7 +8181,93 @@ Observed:
 - Strict readability fails intentionally until villager production art gets a subtle
   authored accent mask.
 - Metal and OpenGL builds pass.
-- The visual proof could not complete because macOS `screencapture` returned
-  all-black PNGs even for a plain desktop screenshot. The probe initialized and
-  wrote asset-readability summary data, but the capture gate is blocked by the
-  desktop capture service rather than by renderer output.
+- A first rerun failed with `expected METAL backend, got OPENGL` because the
+  OpenGL build had overwritten `bin/pf-arm64`; rebuilding Metal fixed the
+  launch target.
+- The follow-up Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-aoe-team-color-scope-pass2/`.
+- Capture summary:
+  - Seven nonblank Retina captures at `retina_scale=[2.0, 2.0]`.
+  - `asset_readability.production_ready_units=2`.
+  - `asset_readability.pending_team_masks=1`.
+  - Warning remains expected: `unit 'villager' still needs production team-color mask`.
+- The earlier all-black `screencapture` result was transient; direct desktop
+  screenshot checks and the pass2 probe both produced nonblank PNGs, so no
+  harness patch was needed for this slice.
+
+## Completed Slice 93 — Subtle Villager Mask And Wide-Zoom Healthbar Scale
+
+Goal:
+
+- Close the remaining strict team-mask gate with a deliberately small
+  cart/villager placeholder mask.
+- Keep the AoE-style rule intact: minimap colors can be strong, but main-world
+  unit materials only receive small authored accents.
+- Reduce far-zoom healthbar screen footprint so wide army views are readable
+  instead of dominated by green bars.
+
+Implementation:
+
+- Replaced `assets/models/cart/cart_team_mask.png` with a sparse RGB mask:
+  small strap/banner/tool-wrap islands only, no whole-wood tint.
+- Updated `scripts/sovereign/data/units.py` so the placeholder `villager`
+  uses `texture_mask` with `cart_team_mask.png`.
+  - Mask coverage: `4.8469%`.
+  - Max allowed coverage for this placeholder: `12%`.
+- Reduced backend-aligned healthbar zoom scaling in both renderers:
+  - `src/render/backend_metal.m`
+  - `src/render/gl_statusbar.c`
+  - Old scale: `clamp(160 / camera_height, 0.22, 1.0)`.
+  - New scale: `clamp(120 / camera_height, 0.12, 1.0)`.
+  - Close zoom remains unchanged because the scale still clamps to `1.0`.
+  - Wide zoom bars shrink materially, preserving unit visibility on large-map
+    army views.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-villager-mask-wide-healthbars \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+```
+
+Observed:
+
+- Strict readability is now green:
+  `SOVEREIGN_READABILITY_VALID units=3 production_ready=3 pending_team_masks=0`.
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-villager-mask-wide-healthbars/`.
+- Summary confirms all three current Sovereign unit definitions now have texture
+  masks:
+  - `villager`: `cart_team_mask.png`, coverage `0.048469`.
+  - `militia`: `Knight_team_mask.png`, coverage `0.088352`.
+  - `archer`: `Mage_team_mask.png`, coverage `0.235363`.
+- Wide status proof remains Retina and nonblank. The wide status delta is small
+  and controlled:
+  - `edge_density +0.002091`
+  - `gradient_p95 +1`
+  - `luma_stddev +0.159`
+- OpenGL reference build still compiles with the same healthbar scale.
+
+Next:
+
+- Continue wide-zoom army readability with evidence-backed rules for unit
+  silhouettes, damaged/selected healthbar policy, and far-view army grouping.
+  This should stay separate from real HD/4K asset replacement.

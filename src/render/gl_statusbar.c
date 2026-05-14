@@ -62,7 +62,7 @@
 static float healthbar_zoom_scale(const struct camera *cam)
 {
     const float cam_height = MAX(Camera_GetHeight(cam), 1.0f);
-    return CLAMP(160.0f / cam_height, 0.22f, 1.0f);
+    return CLAMP(120.0f / cam_height, 0.12f, 1.0f);
 }
 
 void R_GL_DrawHealthbars_Impl(const size_t *num_ents, GLfloat *ent_health_pc,

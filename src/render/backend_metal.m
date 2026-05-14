@@ -6531,7 +6531,7 @@ static void render_screenspace_rect(float left, float top, float right, float bo
 static float healthbar_zoom_scale(const struct camera *cam)
 {
     const float cam_height = fmaxf(Camera_GetHeight(cam), 1.0f);
-    return SDL_clamp(160.0f / cam_height, 0.22f, 1.0f);
+    return SDL_clamp(120.0f / cam_height, 0.12f, 1.0f);
 }
 
 static void render_healthbars(const size_t *num_ents, GLfloat *ent_health_pc,
