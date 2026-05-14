@@ -62,11 +62,11 @@ The current placeholder pack also includes:
 
 - `assets/models/mage/Mage_team_mask.png` for the placeholder `archer`, covering
   the Mage texture's purple garment and cape regions.
-- The placeholder `villager` intentionally has no cart-wide team-color mask.
-  A broad `wood.jpg` tint makes the main-world material read like UI paint,
-  which is not the AoE-style direction. Production villager art should add a
-  small authored accent mask on clothing, tools, trim, or a carried banner.
+- `assets/models/cart/cart_team_mask.png` for the placeholder `villager`,
+  covering only small strap/banner accents. It intentionally avoids a broad
+  `wood.jpg` tint because that makes the main-world material read like UI
+  paint, which is not the AoE-style direction.
 
-The current strict gate intentionally stays blocked until every required unit
-has a subtle authored accent mask. Final Sovereign unit art should replace the
-placeholder Knight/Mage/cart assets with purpose-built team-color regions.
+The current strict gate requires every required unit to have a subtle authored
+accent mask. Final Sovereign unit art should replace the placeholder
+Knight/Mage/cart assets with purpose-built team-color regions.
