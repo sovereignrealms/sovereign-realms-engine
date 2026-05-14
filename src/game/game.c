@@ -339,6 +339,23 @@ static void g_draw_pass(struct render_input *in)
     }
 }
 
+#define HEALTHBAR_WIDE_ZOOM_HEIGHT 520.0f
+
+static bool g_healthbar_should_render(uint32_t uid, int curr_health, int max_health,
+                                      const vec_entity_t *selected, float cam_height)
+{
+    if(curr_health < max_health)
+        return true;
+    if(cam_height < HEALTHBAR_WIDE_ZOOM_HEIGHT)
+        return true;
+
+    for(int i = 0; selected && i < vec_size(selected); i++) {
+        if(vec_AT(selected, i) == uid)
+            return true;
+    }
+    return false;
+}
+
 static void g_render_healthbars(void)
 {
     PERF_ENTER();
@@ -357,6 +374,11 @@ static void g_render_healthbars(void)
     STALLOC(GLfloat, ent_health_pc, max_ents);
     STALLOC(vec3_t, ent_top_pos_ws, max_ents);
     STALLOC(int, ent_yoffsets, max_ents);
+
+    enum selection_type sel_type;
+    const vec_entity_t *selected = G_Sel_Get(&sel_type);
+    (void)sel_type;
+    const float cam_height = s_gs.active_cam ? Camera_GetHeight(s_gs.active_cam) : 0.0f;
 
     for(int i = 0; i < max_ents; i++) {
 
@@ -378,6 +400,8 @@ static void g_render_healthbars(void)
         if(curr_health == 0 || max_health == 0)
             continue;
         if(hb_setting.as_int == HB_MODE_DAMAGED && curr_health == max_health)
+            continue;
+        if(!g_healthbar_should_render(curr, curr_health, max_health, selected, cam_height))
             continue;
 
         int yoffset = -20;

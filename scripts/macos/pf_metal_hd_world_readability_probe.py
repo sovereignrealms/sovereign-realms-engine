@@ -25,6 +25,7 @@ ERROR_PATH = "/tmp/pf_metal_hd_world_readability_probe_error.txt"
 SPRITE_STATS_PATH = "/tmp/pf_metal_hd_world_readability_sprite_stats.txt"
 DEFAULT_OUTPUT_DIR = "visual_parity_captures/hd-world-readability-probe"
 CAPTURE_SETTLE_TICKS = 75
+WIDE_HEALTHBAR_POLICY_HEIGHT = 520.0
 METRIC_CROP_RATIOS = {
     "close_character_lod_target": 0.42,
     "close_character_status_readability": 0.42,
@@ -398,6 +399,12 @@ def _capture(scene):
         "yaw": scene["yaw"],
         "selected_units": len(pf.get_unit_selection()),
         "fog_of_war": bool(scene.get("fog_of_war", False)),
+        "healthbar_policy": {
+            "requested": bool(scene.get("healthbars", False)),
+            "wide_zoom_policy": scene["height"] >= WIDE_HEALTHBAR_POLICY_HEIGHT,
+            "wide_zoom_height": WIDE_HEALTHBAR_POLICY_HEIGHT,
+            "wide_zoom_rule": "selected_or_damaged_only",
+        },
         "readability_metrics": metrics,
     }
     STATE["captures"].append(record)
@@ -499,6 +506,7 @@ def _write_summary(status, reason=None):
             "wide_zoom": "large center-crop detail metrics and crop image for army/map readability review",
             "selection_markers": "player-owned selected units keep neutral white thin rings for unobtrusive readability",
             "healthbars": "healthbars shrink as camera height increases so wide views are not dominated by bars",
+            "wide_zoom_healthbar_policy": "above the wide-zoom height, full-health unselected units do not draw bars",
             "retina": "capture dimensions must exceed logical window resolution on high-DPI displays",
             "note": "metrics are evidence gates for regression tracking, not proof of final HD/4K art quality",
         },

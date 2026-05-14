@@ -8271,3 +8271,70 @@ Next:
 - Continue wide-zoom army readability with evidence-backed rules for unit
   silhouettes, damaged/selected healthbar policy, and far-view army grouping.
   This should stay separate from real HD/4K asset replacement.
+
+## Completed Slice 94 — Wide-Zoom Healthbar Visibility Policy
+
+Goal:
+
+- Move beyond smaller bars and reduce healthbar clutter at map-wide zoom.
+- Preserve close/mid combat feedback while making wide army views readable.
+- Keep the policy backend-neutral and aligned between Metal and OpenGL.
+
+Implementation:
+
+- Added a game-side wide-zoom healthbar visibility policy in
+  `src/game/game.c`.
+- Above `HEALTHBAR_WIDE_ZOOM_HEIGHT = 520.0`, a full-health unselected unit no
+  longer contributes a healthbar even when `pf.game.healthbar_mode` is
+  `HB_MODE_ALWAYS`.
+- Damaged units still show bars.
+- Selected units still show bars.
+- Close/mid zoom behavior is unchanged because the wide-zoom policy does not
+  activate below the threshold.
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` summary
+  records with:
+  - requested healthbar state
+  - whether the wide-zoom policy applies
+  - the wide-zoom threshold
+  - the rule name: `selected_or_damaged_only`
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-wide-healthbar-policy \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-wide-healthbar-policy/`.
+- Wide scene policy evidence:
+  - `wide_large_map_readability`: height `900`, selected `0`,
+    `wide_zoom_policy=True`.
+  - `wide_army_status_readability`: height `900`, selected `24`,
+    `wide_zoom_policy=True`.
+  - `dense_army_readability`: height `210`, selected `24`,
+    `wide_zoom_policy=False`.
+- Wide status impact is now very small:
+  - `edge_density +0.000699`
+  - `gradient_p95 +0`
+  - `luma_stddev +0.021`
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Next:
+
+- Continue wide-zoom readability with far-view silhouette/grouping evidence:
+  selected army group readability, damaged-unit visibility, and whether
+  clustered armies need strategic group markers at very high zoom.
