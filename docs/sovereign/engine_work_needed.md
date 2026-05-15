@@ -87,8 +87,9 @@ Required conventions:
 - Every unit, building, tree, prop, resource node, and siege asset needs bounds
   or a documented reason it is non-interactive.
 - Texture files must exist beside the PFOBJ or in a documented asset pack path.
-- Team color starts as material/texture variants or masks; a formal shader
-  convention can come later.
+- Main-world team identity should come from silhouettes, animation, equipment,
+  and small authored accents. Strong faction color belongs on minimap/UI; do
+  not rely on broad dynamic material tinting.
 - Large-army readability needs close, normal, and far-view asset rules before
   500+ unit scenes are judged.
 - Every Sovereign unit registry entry must include readability metadata:
@@ -96,24 +97,14 @@ Required conventions:
   team-color strategy.
 
 Use `tools/asset_validation/validate_pfobj.py` as the first validation gate.
-Use `tools/asset_validation/validate_sovereign_readability.py` to track
-team-color-mask and far-view silhouette readiness. Normal mode allows current
-placeholder units to report pending masks; strict mode is the production gate
-once final unit art is expected.
-
-The current placeholder unit pack has authored mask coverage for the two
-combat placeholders:
-
-- `militia`: `assets/models/knight/Knight_team_mask.png`
-- `archer`: `assets/models/mage/Mage_team_mask.png`
-- `villager`: pending production art
-
 Use `tools/asset_validation/validate_sovereign_readability.py --strict` as the
-current pack-level gate. Broad whole-material masks are not production-ready:
-AoE-style world readability should use subtle authored accents on shields,
-banners, cloth, flags, roofs, trims, or tools, while strong faction color stays
-on minimap markers. Final Sovereign villager art still needs a purpose-built
-clothing/tool/banner mask.
+current metadata gate. The validator reports production asset status separately
+from metadata validity, so placeholder entries can be tracked without pretending
+they are final art.
+
+Use `docs/sovereign/unit_art_readability.md` as the production checklist for
+new unit models, animations, close/wide proof captures, and OpenGL/Metal-safe
+readability rules.
 
 ## Gameplay Data Architecture
 

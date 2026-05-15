@@ -37,8 +37,7 @@ policy. The active parity rule is `not_applicable`: world unit materials do not
 receive dynamic team-color tinting because the OpenGL reference renderer has no
 matching shader path.
 
-Use `--strict` when a production asset pack should have no incomplete
-readability placeholders:
+Use `--strict` for metadata validation in CI or intake gates:
 
 ```sh
 python3 tools/asset_validation/validate_sovereign_readability.py --strict
@@ -50,8 +49,11 @@ For incremental asset work, scope strict validation to a single unit:
 python3 tools/asset_validation/validate_sovereign_readability.py --unit militia --strict
 ```
 
-The current placeholder Sovereign unit pack is expected to pass full strict
-validation. New unit entries should not land with `pending_mask` unless the
-plan explicitly marks them as non-production placeholders. Strong team colors
-remain a minimap/UI concern; world readability should come from authored
-silhouettes, animation, equipment, and compact status UI.
+The current placeholder Sovereign unit pack is expected to pass strict metadata
+validation while still reporting `placeholder_needs_replacement` for production
+asset status. New production unit entries should move to `production_ready`
+only after the close/wide proof captures are visually readable.
+
+Strong team colors remain a minimap/UI concern; world readability should come
+from authored silhouettes, animation, equipment, and compact status UI. See
+`docs/sovereign/unit_art_readability.md` for the production unit art checklist.

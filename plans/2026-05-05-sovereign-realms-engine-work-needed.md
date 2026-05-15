@@ -8718,3 +8718,45 @@ Next:
 - Replace placeholder unit art with production-readable silhouettes and
   animations: real villager/worker, infantry, ranged unit, and siege/animal
   silhouettes before deeper HD/4K character polish.
+
+## Completed Slice 100 — Production Unit Art Readability Spec
+
+Goal:
+
+- Turn the Slice 99 proof result into an asset-authoring contract.
+- Make the next unit replacement work concrete without rewriting the renderer
+  or reintroducing broad world-material team tinting.
+
+Implementation:
+
+- Added `docs/sovereign/unit_art_readability.md`.
+- Defined first production unit classes: worker/villager, melee infantry,
+  ranged infantry, cavalry, siege, and animal/resource.
+- Documented required animation clips, PFOBJ intake checks, material rules,
+  close/wide proof gates, and the first replacement order.
+- Updated `tools/asset_validation/README.md` so strict readability validation
+  is described as metadata validation, while production asset readiness is
+  tracked separately.
+- Updated `docs/sovereign/engine_work_needed.md` to point production unit work
+  toward silhouettes, animation, equipment, compact status UI, and small
+  authored accents instead of broad dynamic tinting.
+
+Verification:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+git diff --check
+```
+
+Conclusion:
+
+- The production unit replacement path is now documented before any real art is
+  swapped into gameplay.
+- The first real production-asset target should be a villager/worker, because
+  the current cart placeholder does not represent economy gameplay or
+  character animation.
+
+Next:
+
+- Add a production unit preview/intake probe for one replacement unit type, then
+  use it to bring in the first real villager/worker model when art is available.
