@@ -17,10 +17,21 @@ UNITS = {
         "scale": (1.0, 1.0, 1.0),
         "readability": {
             "silhouette": "worker_cart_placeholder",
+            "close_view": {
+                "class": "worker_cart_placeholder",
+                "preferred_camera_height": (64, 140),
+                "minimum_pixels": 42,
+                "proof_poses": ["idle"],
+                "notes": "current villager is a cart placeholder, so close-zoom character animation is not production-representative",
+            },
             "far_view": {
                 "class": "worker",
                 "marker_policy": "compact_healthbar_when_selected_or_damaged",
                 "minimum_pixels": 8,
+            },
+            "production_asset": {
+                "status": "placeholder_needs_replacement",
+                "notes": "needs a real animated worker/villager model with gather/build/carry silhouettes",
             },
             "team_color": {
                 "mode": "not_applicable",
@@ -46,10 +57,21 @@ UNITS = {
         "scale": (0.75, 0.75, 0.75),
         "readability": {
             "silhouette": "heavy_infantry_placeholder",
+            "close_view": {
+                "class": "melee_infantry_placeholder",
+                "preferred_camera_height": (64, 150),
+                "minimum_pixels": 48,
+                "proof_poses": ["Idle", "Walk", "Attack"],
+                "notes": "current militia uses the Knight asset as a placeholder for melee silhouette and pose proof",
+            },
             "far_view": {
                 "class": "frontline_melee",
                 "marker_policy": "compact_healthbar_when_selected_or_damaged",
                 "minimum_pixels": 10,
+            },
+            "production_asset": {
+                "status": "placeholder_needs_replacement",
+                "notes": "needs purpose-built infantry proportions, weapons, and attack silhouettes",
             },
             "team_color": {
                 "mode": "not_applicable",
@@ -75,10 +97,21 @@ UNITS = {
         "scale": (0.75, 0.75, 0.75),
         "readability": {
             "silhouette": "ranged_caster_placeholder",
+            "close_view": {
+                "class": "ranged_placeholder",
+                "preferred_camera_height": (64, 150),
+                "minimum_pixels": 46,
+                "proof_poses": ["Idle", "Walk", "Attack"],
+                "notes": "current archer uses the Mage asset as a placeholder until real archer/weapon art exists",
+            },
             "far_view": {
                 "class": "ranged",
                 "marker_policy": "compact_healthbar_when_selected_or_damaged",
                 "minimum_pixels": 9,
+            },
+            "production_asset": {
+                "status": "placeholder_needs_replacement",
+                "notes": "needs real archer model, bow/weapon socket, and readable ranged attack pose",
             },
             "team_color": {
                 "mode": "not_applicable",
