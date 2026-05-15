@@ -90,6 +90,7 @@ struct ent_stat_rstate{
     uint32_t         uid;
     void            *render_private;
     mat4x4_t         model;
+    vec4_t           team_color;
     bool             translucent;
     struct tile_desc td; /* For binning to a chunk batch */
 };
@@ -99,6 +100,7 @@ struct ent_anim_rstate{
     uint32_t        uid;
     void           *render_private;
     mat4x4_t        model;
+    vec4_t          team_color;
     bool            translucent;
     struct anim_pose_data_desc desc;
 };

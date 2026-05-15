@@ -1,5 +1,41 @@
 # Sovereign Realms Changes
 
+## 2026-05-13
+
+- Squash-merged the first Sovereign organization checkpoint PR into
+  `sovereignrealms/sovereign-realms-engine` `main` as `730156a4`.
+- Confirmed local `main` is aligned with `sovereign/main` after the merge.
+- Removed 96 untracked Finder/iCloud-style `" 2"` duplicate files after
+  verifying each was byte-for-byte identical to its canonical source file.
+- Updated the active Sovereign plan to mark the organization push/merge done
+  and to point the next production work toward Phase 10 scale, HD/Retina, and
+  production-content slices.
+- Extended the HD world readability probe with center-crop capture artifacts
+  and objective luma/edge metrics for close-zoom characters, dense armies,
+  world props, VFX combat, and wide-zoom map readability.
+- Captured the first Phase 10 HD/Retina readability proof at 3456x2234
+  high-DPI resolution with 2x Retina scale, five full screenshots, five review
+  crops, and per-scene detail metrics.
+- Kept player selection markers neutral white and thin, and fixed the Metal
+  world-color overlay path so selection strips preserve their intended color
+  instead of being washed through static-material lighting.
+- Added zoom-scaled healthbars so wide map views use much smaller bars instead
+  of covering large portions of the screen.
+- Extended the HD/Retina readability probe with paired close/wide status
+  scenes so healthbar and selection readability can be compared against
+  unmarked baseline captures.
+- Added Sovereign unit readability metadata for placeholder villager, militia,
+  and archer definitions, including far-view silhouette class, minimum pixel
+  target, marker policy, and pending team-color mask path.
+- Added `tools/asset_validation/validate_sovereign_readability.py` so normal
+  checks can track pending masks while strict production checks fail until real
+  texture masks exist.
+- Added asset-readability status to the HD/Retina readability proof summary.
+- Added the first real Sovereign team-color mask proof for the militia/Knight
+  placeholder and a unit-scoped strict readability validation path.
+- Added placeholder team-color masks for archer/Mage and villager/cart so the
+  full Sovereign readability strict gate now passes for all current units.
+
 ## 2026-05-07
 
 - Documented the single-repo early development model: engine, editor,

@@ -5,6 +5,7 @@ import struct
 import subprocess
 import sys
 import time
+import zlib
 
 import pf
 
@@ -12,6 +13,7 @@ sys.path.insert(0, pf.get_basedir() + "/scripts")
 
 import rts.globals
 import rts.main as demo_main
+from sovereign.data.readability import summarize_unit_readability
 from rts.units.berzerker import Berzerker
 from rts.units.goblin import Goblin
 from rts.units.knight import Knight
@@ -23,6 +25,20 @@ ERROR_PATH = "/tmp/pf_metal_hd_world_readability_probe_error.txt"
 SPRITE_STATS_PATH = "/tmp/pf_metal_hd_world_readability_sprite_stats.txt"
 DEFAULT_OUTPUT_DIR = "visual_parity_captures/hd-world-readability-probe"
 CAPTURE_SETTLE_TICKS = 75
+WIDE_HEALTHBAR_POLICY_HEIGHT = 520.0
+METRIC_CROP_RATIOS = {
+    "close_character_lod_target": 0.42,
+    "close_character_status_readability": 0.42,
+    "dense_army_readability": 0.58,
+    "dense_forest_building_readability": 0.58,
+    "vfx_combat_readability": 0.52,
+    "wide_large_map_readability": 0.78,
+    "wide_army_status_readability": 0.78,
+    "wide_army_no_status_readability": 0.82,
+    "wide_army_damaged_status_readability": 0.82,
+    "wide_army_selected_status_readability": 0.82,
+    "map_edge_sky_boundary_readability": 0.86,
+}
 
 EXPECTED_SPRITE_SHEETS = set((
     "projectile_trail.png",
@@ -41,6 +57,16 @@ SCENES = (
         "fog_of_war": False,
         "selection": "heroes",
         "healthbars": False,
+    },
+    {
+        "name": "close_character_status_readability",
+        "target": "character_cluster",
+        "height": 72.0,
+        "pitch": -55.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "heroes",
+        "healthbars": True,
     },
     {
         "name": "dense_army_readability",
@@ -83,6 +109,57 @@ SCENES = (
         "selection": None,
         "healthbars": False,
     },
+    {
+        "name": "wide_army_status_readability",
+        "target": "wide_world",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "friendly_army",
+        "healthbars": True,
+    },
+    {
+        "name": "wide_army_no_status_readability",
+        "target": "army_cluster",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": None,
+        "healthbars": False,
+    },
+    {
+        "name": "wide_army_damaged_status_readability",
+        "target": "army_cluster",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": None,
+        "healthbars": True,
+    },
+    {
+        "name": "wide_army_selected_status_readability",
+        "target": "army_cluster",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "friendly_army",
+        "healthbars": True,
+    },
+    {
+        "name": "map_edge_sky_boundary_readability",
+        "target": "map_edge",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": None,
+        "healthbars": False,
+        "boundary_focus": True,
+    },
 )
 
 STATE = {
@@ -99,6 +176,9 @@ STATE = {
     "heroes": [],
     "army": [],
     "combat": [],
+    "damaged_army": [],
+    "edge_dressing": [],
+    "terrain_updates": 0,
     "vfx_spawned": False,
     "sprite_stats": {},
 }
@@ -135,6 +215,125 @@ def _png_size(path):
     if header[:8] != b"\x89PNG\r\n\x1a\n":
         raise RuntimeError("not a PNG: {0}".format(path))
     return struct.unpack(">II", header[16:24])
+
+
+def _paeth(a, b, c):
+    p = a + b - c
+    pa = abs(p - a)
+    pb = abs(p - b)
+    pc = abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+
+def _png_luma_rows(path):
+    with open(path, "rb") as infile:
+        data = infile.read()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise RuntimeError("not a PNG: {0}".format(path))
+
+    pos = 8
+    width = height = bit_depth = color_type = interlace = None
+    idat = []
+    while pos < len(data):
+        length = struct.unpack(">I", data[pos:pos + 4])[0]
+        chunk_type = data[pos + 4:pos + 8]
+        chunk = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", chunk)
+        elif chunk_type == b"IDAT":
+            idat.append(chunk)
+        elif chunk_type == b"IEND":
+            break
+
+    if bit_depth != 8 or color_type not in (2, 6) or interlace != 0:
+        raise RuntimeError(
+            "unsupported PNG format for metrics: bit_depth={0} color_type={1} interlace={2}".format(
+                bit_depth, color_type, interlace))
+
+    channels = 3 if color_type == 2 else 4
+    bpp = channels
+    stride = width * channels
+    raw = zlib.decompress(b"".join(idat))
+    rows = []
+    prev = [0] * stride
+    src = 0
+    for _ in range(height):
+        filt = raw[src]
+        src += 1
+        scan = list(raw[src:src + stride])
+        src += stride
+        recon = [0] * stride
+        for i, value in enumerate(scan):
+            left = recon[i - bpp] if i >= bpp else 0
+            up = prev[i]
+            up_left = prev[i - bpp] if i >= bpp else 0
+            if filt == 0:
+                out = value
+            elif filt == 1:
+                out = value + left
+            elif filt == 2:
+                out = value + up
+            elif filt == 3:
+                out = value + ((left + up) >> 1)
+            elif filt == 4:
+                out = value + _paeth(left, up, up_left)
+            else:
+                raise RuntimeError("unsupported PNG filter {0}".format(filt))
+            recon[i] = out & 0xff
+        rows.append([
+            int(0.2126 * recon[x] + 0.7152 * recon[x + 1] + 0.0722 * recon[x + 2])
+            for x in range(0, stride, channels)
+        ])
+        prev = recon
+    return width, height, rows
+
+
+def _central_crop_bounds(width, height, ratio):
+    crop_w = max(16, int(width * ratio))
+    crop_h = max(16, int(height * ratio))
+    x0 = max(0, (width - crop_w) // 2)
+    y0 = max(0, (height - crop_h) // 2)
+    return x0, y0, crop_w, crop_h
+
+
+def _image_metrics(path, crop_ratio):
+    width, height, rows = _png_luma_rows(path)
+    x0, y0, crop_w, crop_h = _central_crop_bounds(width, height, crop_ratio)
+    values = []
+    gradients = []
+    for y in range(y0, y0 + crop_h):
+        row = rows[y]
+        for x in range(x0, x0 + crop_w):
+            value = row[x]
+            values.append(value)
+            if x + 1 < x0 + crop_w and y + 1 < y0 + crop_h:
+                gx = abs(row[x + 1] - value)
+                gy = abs(rows[y + 1][x] - value)
+                gradients.append(gx + gy)
+
+    mean = sum(values) / float(len(values)) if values else 0.0
+    variance = sum((value - mean) * (value - mean) for value in values) / float(len(values)) if values else 0.0
+    sorted_gradients = sorted(gradients)
+    p95_idx = int(0.95 * (len(sorted_gradients) - 1)) if sorted_gradients else 0
+    edge_threshold = 18
+    edge_density = (
+        sum(1 for gradient in gradients if gradient >= edge_threshold) / float(len(gradients))
+        if gradients else 0.0
+    )
+    return {
+        "crop_bounds": [x0, y0, crop_w, crop_h],
+        "crop_ratio": crop_ratio,
+        "luma_mean": round(mean, 3),
+        "luma_stddev": round(math.sqrt(variance), 3),
+        "edge_density": round(edge_density, 6),
+        "edge_threshold": edge_threshold,
+        "gradient_p95": int(sorted_gradients[p95_idx]) if sorted_gradients else 0,
+    }
 
 
 def _png_nonblank(path):
@@ -215,9 +414,30 @@ def _capture(scene):
     width, height = _png_size(path)
     camera = STATE["camera"]
     target = STATE["targets"][scene["target"]]
+    crop_ratio = METRIC_CROP_RATIOS.get(scene["name"], 0.5)
+    metrics = _image_metrics(path, crop_ratio)
+    crop_path = os.path.join(
+        STATE["output_dir"], "metal_hd_world_{0}_crop.png".format(scene["name"]))
+    bounds = metrics["crop_bounds"]
+    subprocess.run(
+        [
+            "/usr/bin/sips",
+            "-c", str(bounds[3]), str(bounds[2]),
+            "--cropOffset", str(bounds[1]), str(bounds[0]),
+            path,
+            "--out", crop_path,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10.0,
+    )
+    if not os.path.exists(crop_path) or not _png_nonblank(crop_path):
+        crop_path = None
+
     record = {
         "name": scene["name"],
         "path": path,
+        "crop_path": crop_path,
         "size": [width, height],
         "target": [target[0], target[1]],
         "camera_position": list(camera.position),
@@ -226,10 +446,22 @@ def _capture(scene):
         "pitch": scene["pitch"],
         "yaw": scene["yaw"],
         "selected_units": len(pf.get_unit_selection()),
+        "damaged_units": len(STATE["damaged_army"]),
         "fog_of_war": bool(scene.get("fog_of_war", False)),
+        "healthbar_policy": {
+            "requested": bool(scene.get("healthbars", False)),
+            "wide_zoom_policy": scene["height"] >= WIDE_HEALTHBAR_POLICY_HEIGHT,
+            "wide_zoom_height": WIDE_HEALTHBAR_POLICY_HEIGHT,
+            "wide_zoom_rule": "selected_or_damaged_only",
+            "expected_bar_sources": _expected_healthbar_sources(scene),
+        },
+        "boundary_focus": bool(scene.get("boundary_focus", False)),
+        "readability_metrics": metrics,
     }
     STATE["captures"].append(record)
-    print("HD_WORLD_READABILITY_CAPTURE {0} {1} {2}x{3}".format(scene["name"], path, width, height))
+    print(
+        "HD_WORLD_READABILITY_CAPTURE {0} {1} {2}x{3} edge_density={4:.4f} gradient_p95={5}".format(
+            scene["name"], path, width, height, metrics["edge_density"], metrics["gradient_p95"]))
     sys.stdout.flush()
     return path
 
@@ -259,6 +491,33 @@ def _read_sprite_stats():
     return sheets
 
 
+def _capture_by_name(name):
+    for record in STATE["captures"]:
+        if record["name"] == name:
+            return record
+    return None
+
+
+def _metric_delta(before_name, after_name):
+    before = _capture_by_name(before_name)
+    after = _capture_by_name(after_name)
+    if before is None or after is None:
+        return None
+    before_metrics = before["readability_metrics"]
+    after_metrics = after["readability_metrics"]
+    fields = ("edge_density", "gradient_p95", "luma_stddev")
+    deltas = {}
+    for field in fields:
+        deltas[field] = round(after_metrics[field] - before_metrics[field], 6)
+    return {
+        "before": before_name,
+        "after": after_name,
+        "selected_units_before": before["selected_units"],
+        "selected_units_after": after["selected_units"],
+        "metric_deltas": deltas,
+    }
+
+
 def _write_summary(status, reason=None):
     capture_sizes = [record["size"] for record in STATE["captures"]]
     window_resolution = STATE["window_resolution"]
@@ -269,6 +528,16 @@ def _write_summary(status, reason=None):
             for size in capture_sizes
         )
     STATE["sprite_stats"] = _read_sprite_stats()
+    rule_deltas = []
+    for before_name, after_name in (
+        ("close_character_lod_target", "close_character_status_readability"),
+        ("wide_large_map_readability", "wide_army_status_readability"),
+        ("wide_army_no_status_readability", "wide_army_damaged_status_readability"),
+        ("wide_army_no_status_readability", "wide_army_selected_status_readability"),
+    ):
+        delta = _metric_delta(before_name, after_name)
+        if delta is not None:
+            rule_deltas.append(delta)
     payload = {
         "status": status,
         "reason": reason,
@@ -282,12 +551,29 @@ def _write_summary(status, reason=None):
             "heroes": len(STATE["heroes"]),
             "army": len(STATE["army"]),
             "combat": len(STATE["combat"]),
+            "damaged_army": len(STATE["damaged_army"]),
+            "edge_dressing": len(STATE["edge_dressing"]),
+            "terrain_updates": STATE["terrain_updates"],
         },
         "sprite_stats": STATE["sprite_stats"],
         "captures": STATE["captures"],
+        "readability_contract": {
+            "close_zoom": "center-crop detail metrics and crop image for character-level visual review",
+            "wide_zoom": "large center-crop detail metrics and crop image for army/map readability review",
+            "selection_markers": "player-owned selected units keep neutral white thin rings for unobtrusive readability",
+            "healthbars": "healthbars shrink as camera height increases so wide views are not dominated by bars",
+            "wide_zoom_healthbar_policy": "above the wide-zoom height, full-health unselected units do not draw bars",
+            "wide_army_status_modes": "damaged-only and selected-army captures prove status readability without all-unit bar clutter",
+            "map_boundary": "outer map perimeter should remain clearly separated from sky at wide zoom",
+            "retina": "capture dimensions must exceed logical window resolution on high-DPI displays",
+            "note": "metrics are evidence gates for regression tracking, not proof of final HD/4K art quality",
+        },
+        "readability_rule_deltas": rule_deltas,
+        "asset_readability": summarize_unit_readability(basedir=pf.get_basedir()),
         "current_limitations": [
             "stock low-poly character meshes are readable but not HD/4K close-zoom quality",
-            "wide views show repeated terrain texture patterns and sparse biome variation",
+            "far-view silhouettes and subtle authored unit accents are still production-asset work",
+            "fixture-level biome and edge dressing is staged for proof, but final maps still need authored terrain art and asset placement",
             "dense vegetation/building readability needs asset density, LOD, and silhouette rules",
             "VFX fixture sheets prove the rendering path but are not final production-quality effects",
         ],
@@ -352,6 +638,105 @@ def _pathable_near(point, radius=3.25):
         if target is not None:
             return (float(target[0]), float(target[1]))
     return (float(point[0]), float(point[1]))
+
+
+def _inside_map(point):
+    return pf.map_height_at_point(point[0], point[1]) is not None
+
+
+def _scan_map_edge(center, direction, step=32.0, max_steps=256):
+    curr = (float(center[0]), float(center[1]))
+    last_inside = curr
+    for _ in range(max_steps):
+        nxt = (curr[0] + direction[0] * step, curr[1] + direction[1] * step)
+        if _inside_map(nxt):
+            last_inside = nxt
+            curr = nxt
+            continue
+
+        lo = last_inside
+        hi = nxt
+        for _ in range(10):
+            mid = ((lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5)
+            if _inside_map(mid):
+                lo = mid
+            else:
+                hi = mid
+        return lo
+    return last_inside
+
+
+def _inset_from_edge(edge, center, inset=48.0):
+    dx = center[0] - edge[0]
+    dz = center[1] - edge[1]
+    length = math.sqrt(dx * dx + dz * dz)
+    if length <= 0.0001:
+        return edge
+    return (edge[0] + dx / length * inset, edge[1] + dz / length * inset)
+
+
+def _tile_from_world(point):
+    col = int((512.0 - float(point[0])) / 8.0)
+    row = int((float(point[1]) + 512.0) / 8.0)
+    if row < 0 or col < 0 or row >= 128 or col >= 128:
+        return None
+    return (row // 32, col // 32), (row % 32, col % 32)
+
+
+def _paint_tile(global_row, global_col, top_mat, base_height=0, pathable=True):
+    if global_row < 0 or global_col < 0 or global_row >= 128 or global_col >= 128:
+        return False
+    tile = pf.Tile()
+    tile.type = pf.TILETYPE_FLAT
+    tile.base_height = int(base_height)
+    tile.ramp_height = 0
+    tile.top_mat_idx = int(top_mat)
+    tile.sides_mat_idx = 1
+    tile.pathable = 1 if pathable else 0
+    tile.blend_mode = pf.BLEND_MODE_BLUR
+    tile.blend_normals = 1
+    pf.update_tile((global_row // 32, global_col // 32), (global_row % 32, global_col % 32), tile)
+    STATE["terrain_updates"] += 1
+    return True
+
+
+def _paint_rect(row0, row1, col0, col1, top_mat, base_height=0, pathable=True):
+    for row in range(row0, row1 + 1):
+        for col in range(col0, col1 + 1):
+            _paint_tile(row, col, top_mat, base_height=base_height, pathable=pathable)
+
+
+def _paint_edge_biome_dressing():
+    edge_desc = _tile_from_world(STATE["targets"]["map_edge"])
+    if edge_desc is None:
+        return
+    (chunk_r, chunk_c), (tile_r, tile_c) = edge_desc
+    center_row = chunk_r * 32 + tile_r
+    edge_col = chunk_c * 32 + tile_c
+    col0 = max(0, edge_col - 18)
+    col1 = min(127, edge_col + 2)
+    row0 = max(0, center_row - 32)
+    row1 = min(127, center_row + 42)
+
+    for row in range(row0, row1 + 1):
+        for col in range(col0, col1 + 1):
+            dist_from_edge = abs(edge_col - col)
+            if dist_from_edge <= 2:
+                mat = 10
+            elif dist_from_edge <= 5:
+                mat = 5 if (row + col) % 3 else 6
+            elif dist_from_edge <= 9:
+                mat = 4 if row % 2 else 10
+            elif (row + col) % 7 == 0:
+                mat = 2
+            else:
+                mat = 4
+            _paint_tile(row, col, mat, base_height=0, pathable=True)
+
+    # A small road/settlement ribbon helps the wide view read as authored land,
+    # not a single repeated grass sheet.
+    _paint_rect(center_row - 18, center_row + 28, max(0, edge_col - 44), max(0, edge_col - 39), 6)
+    _paint_rect(center_row - 12, center_row + 12, max(0, edge_col - 64), max(0, edge_col - 49), 4)
 
 
 def _place(ent, point, radius=2.5, scale=None, selectable=False, faction_id=1):
@@ -419,6 +804,19 @@ def _stage_army():
         STATE["army"].append(_make_unit(kind, "hd_probe_enemy_{0}".format(idx), _pathable_near(point), 2))
 
 
+def _damage_far_view_units():
+    candidates = [
+        ent for ent in STATE["army"]
+        if getattr(ent, "faction_id", None) == 1
+    ]
+    for ent in candidates[::5][:5]:
+        try:
+            ent.hp = max(1, int(ent.max_hp) // 2)
+            STATE["damaged_army"].append(ent)
+        except Exception:
+            pass
+
+
 def _stage_forest_and_buildings():
     center = STATE["targets"]["forest_cluster"]
     tree_specs = (
@@ -444,6 +842,34 @@ def _stage_forest_and_buildings():
     for idx, point in enumerate(_grid((center[0] + 28.0, center[1] + 4.0), 2, 5, 11.0)):
         path, pfobj, scale = prop_specs[idx % len(prop_specs)]
         _make_prop(path, pfobj, "hd_probe_building_prop_{0}".format(idx), point, scale=scale, radius=3.0)
+
+
+def _stage_edge_dressing():
+    _paint_edge_biome_dressing()
+    edge = STATE["targets"]["map_edge"]
+    specs = (
+        ("assets/models/varied_rocks", "rock_1.pfobj", (2.4, 2.4, 2.4), 3.0),
+        ("assets/models/varied_rocks", "rock_3.pfobj", (2.8, 2.8, 2.8), 3.0),
+        ("assets/models/rock", "rock.pfobj", (2.2, 2.2, 2.2), 3.0),
+        ("assets/models/tree_dry", "tree_dry.pfobj", (1.9, 1.9, 1.9), 3.0),
+        ("assets/models/tree_leafy", "tree_leafy.pfobj", (2.2, 2.2, 2.2), 3.0),
+        ("assets/models/fern", "fern.pfobj", (2.2, 2.2, 2.2), 2.0),
+        ("assets/models/bushes", "bush_2.pfobj", (2.0, 2.0, 2.0), 2.0),
+        ("assets/models/props", "wood_fence_1.pfobj", (1.7, 1.7, 1.7), 2.0),
+        ("assets/models/props", "wood_fence_2.pfobj", (1.7, 1.7, 1.7), 2.0),
+        ("assets/models/props", "broken_pillar_1.pfobj", (1.5, 1.5, 1.5), 2.0),
+    )
+    offsets = (
+        (26.0, -118.0), (18.0, -92.0), (12.0, -66.0), (22.0, -38.0),
+        (34.0, -10.0), (26.0, 18.0), (16.0, 46.0), (24.0, 72.0),
+        (38.0, 100.0), (30.0, 130.0), (58.0, -76.0), (64.0, -34.0),
+        (70.0, 14.0), (60.0, 56.0), (74.0, 96.0),
+    )
+    for idx, offset in enumerate(offsets):
+        path, pfobj, scale, radius = specs[idx % len(specs)]
+        point = _pathable_near((edge[0] + offset[0], edge[1] + offset[1]), radius=radius)
+        ent = _make_prop(path, pfobj, "hd_probe_edge_dressing_{0}".format(idx), point, scale=scale, radius=radius)
+        STATE["edge_dressing"].append(ent)
 
 
 def _stage_combat_units():
@@ -506,12 +932,15 @@ def _hide_probe_ui():
 
 
 def _setup_targets():
+    wide_world = (0.0, -175.0)
+    edge = _scan_map_edge(wide_world, (-1.0, 0.0))
     STATE["targets"] = {
         "character_cluster": (56.0, -84.0),
         "army_cluster": (28.0, -126.0),
         "forest_cluster": (-116.0, -294.0),
         "vfx_cluster": (72.0, -92.0),
-        "wide_world": (0.0, -175.0),
+        "wide_world": wide_world,
+        "map_edge": _inset_from_edge(edge, wide_world),
     }
 
 
@@ -536,9 +965,30 @@ def _selection_for(scene):
         return STATE["heroes"]
     if key == "army":
         return STATE["army"][:36]
+    if key == "friendly_army":
+        return [ent for ent in STATE["army"] if getattr(ent, "faction_id", None) == 1]
     if key == "combat":
         return STATE["combat"]
     return []
+
+
+def _expected_healthbar_sources(scene):
+    if not scene.get("healthbars", False):
+        return {"selected": 0, "damaged": 0, "full_health_unselected": 0}
+
+    selection = _selection_for(scene)
+    selected_ids = set(id(ent) for ent in selection)
+    damaged_ids = set(id(ent) for ent in STATE["damaged_army"])
+    full_health_unselected = 0
+    if scene["height"] < WIDE_HEALTHBAR_POLICY_HEIGHT:
+        staged = len(STATE["army"]) + len(STATE["heroes"]) + len(STATE["combat"])
+        full_health_unselected = max(0, staged - len(selected_ids) - len(damaged_ids))
+
+    return {
+        "selected": len(selection),
+        "damaged": len(damaged_ids - selected_ids),
+        "full_health_unselected": full_health_unselected,
+    }
 
 
 def _place_camera(scene):
@@ -575,6 +1025,9 @@ def _stage_probe():
     _setup_targets()
     _hide_probe_ui()
     pf.disable_fog_of_war()
+    pf.update_faction(1, "Sovereign Blue", (40, 90, 255, 255))
+    pf.update_faction(2, "Sovereign Red", (220, 50, 50, 255))
+    pf.settings_set("pf.game.healthbar_mode", int(pf.HB_MODE_ALWAYS), persist=False)
     pf.set_minimap_render_all_ents(False)
     pf.set_minimap_size(260)
     pf.set_simstate(pf.G_PAUSED_UI_RUNNING)
@@ -582,6 +1035,8 @@ def _stage_probe():
     _setup_camera()
     _stage_characters()
     _stage_army()
+    _damage_far_view_units()
+    _stage_edge_dressing()
     _stage_forest_and_buildings()
     _stage_combat_units()
 

@@ -15,6 +15,19 @@ UNITS = {
         "gather_speed": {"food": 4.0, "wood": 4.0, "gold": 3.0, "stone": 3.0},
         "selection_radius": 2.5,
         "scale": (1.0, 1.0, 1.0),
+        "readability": {
+            "silhouette": "worker_cart_placeholder",
+            "far_view": {
+                "class": "worker",
+                "marker_policy": "compact_healthbar_when_selected_or_damaged",
+                "minimum_pixels": 8,
+            },
+            "team_color": {
+                "mode": "not_applicable",
+                "priority": "none",
+                "notes": "world materials do not use dynamic team-color tint; faction identity stays on the minimap and neutral selection/status UI",
+            },
+        },
         "armor_classes": ["infantry"],
         "attacks": [{"damage_class": "melee", "damage": 3, "range": 1.5}],
     },
@@ -31,6 +44,19 @@ UNITS = {
         "speed": 20.0,
         "selection_radius": 3.25,
         "scale": (0.75, 0.75, 0.75),
+        "readability": {
+            "silhouette": "heavy_infantry_placeholder",
+            "far_view": {
+                "class": "frontline_melee",
+                "marker_policy": "compact_healthbar_when_selected_or_damaged",
+                "minimum_pixels": 10,
+            },
+            "team_color": {
+                "mode": "not_applicable",
+                "priority": "none",
+                "notes": "world materials do not use dynamic team-color tint; production identity should come from authored silhouettes and subtle non-dynamic accents",
+            },
+        },
         "armor_classes": ["infantry"],
         "attacks": [{"damage_class": "melee", "damage": 4, "range": 1.5}],
     },
@@ -47,6 +73,19 @@ UNITS = {
         "speed": 20.0,
         "selection_radius": 3.0,
         "scale": (0.75, 0.75, 0.75),
+        "readability": {
+            "silhouette": "ranged_caster_placeholder",
+            "far_view": {
+                "class": "ranged",
+                "marker_policy": "compact_healthbar_when_selected_or_damaged",
+                "minimum_pixels": 9,
+            },
+            "team_color": {
+                "mode": "not_applicable",
+                "priority": "none",
+                "notes": "world materials do not use dynamic team-color tint; production identity should come from authored silhouettes and subtle non-dynamic accents",
+            },
+        },
         "armor_classes": ["archer"],
         "attacks": [{"damage_class": "pierce", "damage": 5, "range": 44.0}],
         "projectile": {

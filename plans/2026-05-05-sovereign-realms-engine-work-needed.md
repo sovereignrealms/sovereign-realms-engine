@@ -176,13 +176,33 @@ file records execution status as slices are completed and verified.
   spikes occur in both dense-cadence and conservative modes, mostly during
   sustained soak, so the instability is dense-battle scheduling/ClearPath
   pressure rather than the seek-cadence policy by itself.
+- Phase 10 HD/Retina readability proof: DONE for the first metric-backed
+  close-zoom and wide-zoom capture gate. The HD world readability probe now
+  records center crops, Retina scale, luma/detail metrics, and wide/close
+  proof captures. A first actual readability overlay slice is also DONE:
+  selected player-owned units keep neutral white thin rings, Metal world-color
+  overlays render through the native color pipeline, and healthbars shrink on
+  wide zoom. Current Sovereign placeholder units now carry far-view silhouette,
+  minimum-pixel, marker-policy, and AoE-style team-color metadata. The earlier
+  dynamic world-material team-mask work was intentionally backed out because
+  the OpenGL reference has no matching shader path and broad main-world tinting
+  did not match the intended AoE-style direction. Strong team color remains a
+  minimap/UI signal; world readability should come from silhouettes, animation,
+  small authored accents in final assets, and terrain/biome richness. Map-edge
+  and sky-boundary readability is DONE for a first backend-neutral proof line,
+  and fixture-level biome/edge dressing is now DONE in the HD readability probe
+  using existing terrain materials and props.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
-  ignore updates, README/NOTICE/CHANGES polish, and handoff checklist.
+  ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
+  first Sovereign organization checkpoint merge.
 - Strict publish blocker cleanup: DONE on `codex/sovereign-publish-preflight`;
   strict preflight reports `fails=0 warnings=0`.
 - Multi-world/game-pack repository policy: DONE for `games/` structure,
   per-pack license docs, and MIT-licensed example pack.
-- GitHub organization push: PENDING.
+- GitHub organization push: DONE. `sovereignrealms/sovereign-realms-engine`
+  PR #1, `Add Sovereign MVP AI and scale gates`, was squash-merged into
+  `main` as `730156a4` on 2026-05-13. Local `main` is aligned with
+  `sovereign/main`.
 
 ## Completed Slice 1 — Repo/License And Package Bootstrap
 
@@ -4130,9 +4150,9 @@ Rough status against the ten-phase plan:
 
 - Phases 0-1: repo bootstrap and Metal baseline are functionally in place, but
   upstream PR hygiene remains separate from Sovereign organization packaging.
-  The Sovereign publish preflight/checklist is now in place and strict publish
-  hygiene is green on `codex/sovereign-publish-preflight`. The organization
-  push remains pending.
+  The Sovereign publish preflight/checklist is now in place, strict publish
+  hygiene is green, and the first Sovereign organization checkpoint is merged
+  into `sovereignrealms/sovereign-realms-engine`.
 - Phases 2-3: asset pipeline seed and data-driven definitions are in place;
   real production art/validation depth remains.
 - Phases 4-7: economy, production/population, age/tech, combat counters,
@@ -4177,7 +4197,9 @@ Rough status against the ten-phase plan:
   budget 1000+ unit tuning, or open-ended strategic play.
 - Phase 10: performance, Retina clarity, HD/4K assets, large-map benchmarks,
   1000+ production-budget benchmarks, and production polish remain the largest
-  open area.
+  open area. A first metric-backed HD/Retina readability gate now exists for
+  regression tracking, but production assets and final readability art
+  direction remain open.
 
 Overall: the technical vertical-slice scaffold is roughly 95-97% complete for
 an MVP skirmish foundation. It is not yet production-game-ready because real
@@ -4186,9 +4208,10 @@ benchmarking, and HD/Retina presentation still need focused slices.
 
 Status by plan shape:
 
-- Latest execution slices: 57 completed slices are recorded.
+- Latest execution slices: 95 completed or rejected execution slices are
+  recorded through the wide-zoom army readability policy evidence gate.
 - Current-status checklist: all listed implementation items are marked DONE,
-  with only the actual GitHub organization push marked PENDING.
+  including the first GitHub organization push/merge.
 - Ten-phase production roadmap: Phases 0-9 have MVP scaffolding/probes in
   place; Phase 10 and production-quality content remain the largest open work.
 
@@ -7600,3 +7623,1005 @@ Conclusion:
 - Do not re-test projection-first, accepted-candidate caps, or naive pair caps
   unless a new ordering/selection argument is added; those variants have now
   been rejected.
+
+## Completed Slice 86 — HD/Retina Readability Proof Gate
+
+Goal:
+
+- Move Phase 10 readability work from subjective screenshot review to a
+  repeatable proof gate for close-zoom characters, dense armies, world props,
+  VFX combat, and wide-zoom map/army readability.
+
+Implementation:
+
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` with
+  stdlib PNG luma decoding for objective capture metrics.
+- Each captured scene now records:
+  - center-crop bounds and crop ratio
+  - luma mean and standard deviation
+  - edge-density against a fixed gradient threshold
+  - p95 local luma-gradient value
+  - a saved center-crop PNG for visual review
+- Added a `readability_contract` section to the summary JSON to make clear
+  that these metrics are regression/evidence gates, not final HD/4K art-quality
+  certification.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+```
+
+```sh
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-proof \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+HD_WORLD_READABILITY_PASS backend=METAL captures=5 highdpi=1 staged=108
+sprite_sheets=fire_loop.png,impact_burst.png,projectile_trail.png,smoke_puff.png
+summary: visual_parity_captures/2026-05-13-hd-retina-readability-proof/summary_hd_world_readability.json
+retina_scale: [2.0, 2.0]
+capture size: 3456x2234 for all scenes
+```
+
+Per-scene metrics:
+
+```text
+close_character_lod_target:        edge_density=0.140209 gradient_p95=34 luma_stddev=64.067
+dense_army_readability:           edge_density=0.317067 gradient_p95=51 luma_stddev=50.001
+dense_forest_building_readability edge_density=0.332284 gradient_p95=56 luma_stddev=44.159
+vfx_combat_readability:           edge_density=0.336208 gradient_p95=60 luma_stddev=54.729
+wide_large_map_readability:       edge_density=0.113488 gradient_p95=25 luma_stddev=33.970
+```
+
+Conclusion:
+
+- The Metal runtime is capturing at Retina scale and the proof harness now
+  stores both full-size screenshots and centered review crops.
+- Current placeholder units/world assets are readable enough for regression
+  evidence, but they are not yet the final HD/4K production-art target.
+- The next Phase 10 content slice should improve actual production readability:
+  stronger unit silhouettes/team color at close zoom, wider-view army markers
+  or LOD rules, and terrain/biome texture variation for large maps.
+
+## Completed Slice 87 — Neutral Selection And Zoom-Scaled Healthbars
+
+Goal:
+
+- Improve actual close-zoom and wide-zoom unit readability using existing
+  engine overlays before starting a full HD asset replacement pass.
+- Restore the user's preferred neutral white thin selection-ring style while
+  making healthbars scale down at wide zoom.
+
+Implementation:
+
+- Restored player-owned selection markers to neutral white.
+- Restored selected-unit world marker width to the thin `0.4` style.
+- Fixed the Metal world-color overlay path used by selection circles,
+  selection rectangles, and world lines: it now uses the existing Metal
+  world-color pipeline instead of the lit static-mesh material pipeline, so
+  marker colors render faithfully instead of being washed to grey.
+- Added camera-height scaling to healthbars in both Metal and OpenGL:
+  - close/normal views keep readable bars
+  - high/wide views shrink bars down to a compact minimum
+  - Metal also scales border thickness with the bar size
+- Updated the OpenGL statusbar shader minimum height so the OpenGL reference
+  path follows the same wide-zoom shrinking rule.
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` with:
+  - `close_character_status_readability`
+  - `wide_army_status_readability`
+  - paired metric deltas between unmarked/marked close and wide captures
+  - explicit readability-contract notes for neutral selection markers and
+    zoom-scaled healthbars
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+```
+
+```sh
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-neutral-healthbars \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+sprite_sheets=fire_loop.png,impact_burst.png,projectile_trail.png,smoke_puff.png
+summary: visual_parity_captures/2026-05-13-hd-retina-readability-neutral-healthbars/summary_hd_world_readability.json
+retina_scale: [2.0, 2.0]
+```
+
+Final per-scene metrics:
+
+```text
+close_character_lod_target:         edge_density=0.1372 gradient_p95=33
+close_character_status_readability: edge_density=0.1420 gradient_p95=34
+dense_army_readability:             edge_density=0.3269 gradient_p95=58
+dense_forest_building_readability:  edge_density=0.3323 gradient_p95=56
+vfx_combat_readability:             edge_density=0.3423 gradient_p95=66
+wide_large_map_readability:         edge_density=0.1133 gradient_p95=25
+wide_army_status_readability:       edge_density=0.1160 gradient_p95=26
+```
+
+Conclusion:
+
+- Close-zoom status proof keeps the neutral white thin selection style with
+  healthbar context.
+- Wide-zoom status proof now shows friendly cohorts with compact healthbars
+  instead of large bars that cover the army/map.
+- This improves selection/readability UX and fixes a real Metal overlay-color
+  bug, but full production readability still needs asset-side team-color masks,
+  clearer far-view silhouettes, LOD/icon rules, and richer biome/terrain art.
+
+## Completed Slice 88 — Unit Readability Metadata And Team-Color Mask Gate
+
+Goal:
+
+- Start the asset-side half of Phase 10 readability without changing renderer
+  behavior prematurely.
+- Track which Sovereign units have far-view silhouette/readability rules and
+  which still need production team-color masks.
+
+Implementation:
+
+- Added `readability` metadata to the current Sovereign placeholder unit
+  registry entries:
+  - `villager`: worker/cart placeholder, compact selected-or-damaged marker
+    policy, pending `cart_team_mask.png`
+  - `militia`: frontline melee placeholder, compact selected-or-damaged marker
+    policy, pending `Knight_team_mask.png`
+  - `archer`: ranged/caster placeholder, compact selected-or-damaged marker
+    policy, pending `Mage_team_mask.png`
+- Added `scripts/sovereign/data/readability.py` for shared validation and
+  summary generation.
+- Added `tools/asset_validation/validate_sovereign_readability.py`.
+  - normal mode allows `pending_mask` and reports warnings
+  - `--strict` is the production gate and fails until real masks exist
+- Wired registry validation to fail on missing/malformed readability metadata.
+- Added `asset_readability` to the HD/Retina readability probe summary JSON.
+- Updated asset/tooling docs and the Sovereign engine-work notes to describe
+  the team-color-mask and far-view silhouette convention.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  scripts/sovereign/factory.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py \
+  tools/asset_validation/validate_sovereign_readability.py
+```
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_WARNING unit 'archer' still needs production team-color mask
+SOVEREIGN_READABILITY_WARNING unit 'militia' still needs production team-color mask
+SOVEREIGN_READABILITY_WARNING unit 'villager' still needs production team-color mask
+SOVEREIGN_READABILITY_VALID units=3 production_ready=0 pending_team_masks=3
+```
+
+Strict production gate:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+```
+
+Observed expected failure:
+
+```text
+SOVEREIGN_READABILITY_INVALID units=3 pending_team_masks=3
+```
+
+Runtime/proof checks:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_factory_probe.py \
+  --output-dir qa-output/sovereign-readability-factory-check
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-asset-rules \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_FACTORY_PROBE_PASS backend=METAL entities=10 units=3 buildings=3 resources=4
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=0
+asset_readability.pending_team_masks=3
+```
+
+Conclusion:
+
+- The engine now has a concrete, testable place to enforce team-color and
+  far-view readability expectations for Sovereign units.
+- Current placeholder units are explicitly marked as not production-ready for
+  team-color readability. That is the intended state until real unit textures
+  and masks replace the placeholder Knight/Mage/cart assets.
+
+## Completed Slice 89 — Militia Team-Color Mask Proof
+
+Goal:
+
+- Create the first real unit team-color mask proof without changing renderer
+  semantics or claiming the placeholder art is final.
+- Make strict validation useful for one unit at a time while the rest of the
+  placeholder pack still has pending masks.
+
+Implementation:
+
+- Added `assets/models/knight/Knight_team_mask.png`.
+  - source texture: `assets/models/knight/Knight.png`
+  - dimensions: 512x512
+  - binary mask coverage from existing blue shield and cloth/paint regions:
+    23,161 pixels, about 8.835% of the texture
+- Changed the Sovereign `militia` readability metadata from `pending_mask` to
+  `texture_mask`.
+- Extended `tools/asset_validation/validate_sovereign_readability.py` with
+  `--unit <id>` so a single asset can pass strict validation while other
+  placeholder units remain pending.
+- Hardened readability validation so texture masks are resolved correctly for
+  directory-style asset entries such as `{"path": "assets/models/knight",
+  "pfobj": "knight.pfobj"}`.
+- Added PNG dimension validation so a texture mask must match its source
+  PFOBJ texture size.
+- Updated asset/tooling docs and this plan with the incremental mask proof.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/sovereign/factory.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+```
+
+Normal pack gate:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=3 production_ready=1 pending_team_masks=2
+SOVEREIGN_READABILITY_WARNING unit 'archer' still needs production team-color mask
+SOVEREIGN_READABILITY_WARNING unit 'villager' still needs production team-color mask
+```
+
+Scoped strict proof:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --unit militia --strict
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=1 production_ready=1 pending_team_masks=0
+```
+
+Full strict pack gate still fails as intended:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_INVALID units=3 pending_team_masks=2
+```
+
+Runtime/proof checks:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_factory_probe.py \
+  --output-dir qa-output/sovereign-readability-mask-proof-factory
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-mask-proof \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_FACTORY_PROBE_PASS backend=METAL entities=10 units=3 buildings=3 resources=4
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=1
+asset_readability.pending_team_masks=2
+militia.team_color_mode=texture_mask
+militia.team_color_mask_size=[512, 512]
+```
+
+Conclusion:
+
+- The militia/Knight placeholder now has a concrete team-color mask asset and
+  passes the unit-scoped strict readability gate.
+- The whole pack remains correctly blocked by full strict validation until
+  the villager/cart and archer/Mage placeholder masks are replaced or completed.
+
+## Completed Slice 90 — Current Unit Pack Team-Color Mask Gate
+
+Goal:
+
+- Complete the current placeholder unit-pack mask coverage so the full strict
+  readability gate can go green.
+- Keep the distinction clear: this is a mask-pipeline/readability proof for
+  current placeholders, not final HD/4K unit art.
+
+Implementation:
+
+- Added `assets/models/mage/Mage_team_mask.png`.
+  - source texture: `assets/models/mage/Mage.png`
+  - dimensions: 512x512
+  - mask coverage from existing purple garment and cape regions: 61,699
+    pixels, about 23.536% of the texture
+- Added `assets/models/cart/cart_team_mask.png`.
+  - source texture: `assets/models/cart/wood.jpg`
+  - dimensions: 280x280
+  - mask coverage: whole texture, because the placeholder cart has one tiled
+    wood material and no separate team-color paint/clothing region
+- Changed Sovereign `archer` and `villager` readability metadata from
+  `pending_mask` to `texture_mask`.
+- Extended readability texture-size validation to read JPEG dimensions, so PNG
+  masks can be checked against JPEG source textures such as `wood.jpg`.
+- Updated docs to state that the current placeholder pack now passes strict
+  validation, while final production art still needs purpose-built team-color
+  regions.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/sovereign/factory.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+```
+
+Strict pack gate:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=3 production_ready=3 pending_team_masks=0
+```
+
+Runtime/proof checks:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_factory_probe.py \
+  --output-dir qa-output/sovereign-readability-full-mask-factory
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-readability-full-mask \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_FACTORY_PROBE_PASS backend=METAL entities=10 units=3 buildings=3 resources=4
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=3
+asset_readability.pending_team_masks=0
+asset_readability.warnings=0
+archer.team_color_mask_size=[512, 512]
+militia.team_color_mask_size=[512, 512]
+villager.team_color_mask_size=[280, 280]
+```
+
+Conclusion:
+
+- The current Sovereign placeholder unit pack now has complete team-color mask
+  coverage and passes full strict readability validation.
+- The next production-art step should replace these placeholder masks with
+  purpose-built unit assets and masks, especially the cart/villager placeholder
+  where the mask currently covers the whole wood texture.
+
+## Completed Slice 91 — Metal Team-Color Mask Rendering Proof
+
+Goal:
+
+- Make the validated Sovereign unit masks render in the actual Metal gameplay
+  path instead of existing only as asset metadata.
+- Preserve the user's visual direction: selection rings stay neutral white and
+  thin; faction readability comes from unit materials, not selection markers.
+
+Implementation:
+
+- Added `team_color` to static and animated render-state records.
+- Populated render-state team color from the entity faction color in
+  `g_make_draw_list()`.
+- Added Metal team-mask texture arrays loaded by sibling texture convention:
+  a material texture such as `Knight.png` or `wood.jpg` can have
+  `Knight_team_mask.png` or `wood_team_mask.png` beside it.
+- Added Metal fragment shader blending that tints only masked texels with the
+  current entity faction color while preserving source texture luminance. The
+  shader treats RGB mask intensity as coverage, so normal opaque PNG alpha does
+  not accidentally tint the full texture.
+- Split Metal static and animated batches by team color, so mixed-faction
+  groups are not drawn with the wrong tint.
+- Renamed the cart placeholder mask reference to `wood_team_mask.png` so it
+  matches the renderer lookup convention.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-13-hd-retina-team-mask-rendered-rgb \
+  --expect-backend METAL
+```
+
+Observed:
+
+```text
+SOVEREIGN_READABILITY_VALID units=3 production_ready=3 pending_team_masks=0
+HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108
+asset_readability.production_ready_units=3
+asset_readability.pending_team_masks=0
+asset_readability.warnings=0
+```
+
+Conclusion:
+
+- Team-color masks are now an actual Metal-rendered gameplay feature for the
+  current placeholder unit pack.
+- The proof capture shows red/blue faction-tinted bodies while selection rings
+  remain neutral white.
+- This closes the current mask-rendering proof; final production art still
+  needs purpose-built high-clarity unit textures and masks.
+
+## Completed Slice 92 — AoE-Style Team-Color Scope Correction
+
+Goal:
+
+- Align team-color usage with the user's AoE-style direction:
+  strong faction colors belong on minimap markers, while main-world units and
+  buildings should use only subtle authored accents.
+- Prevent broad whole-material masks from being accepted as production-ready.
+
+Implementation:
+
+- Added an AoE-style readability note to `AGENTS.md`: minimap markers may use
+  strong faction colors, but main-world material tinting must stay limited to
+  authored accents such as shields, banners, cloth trim, flags, roofs, and
+  tools.
+- Added PNG mask coverage validation to
+  `scripts/sovereign/data/readability.py`.
+  - Default max coverage: 35% of the source texture.
+  - Coverage uses RGB intensity only, matching the Metal shader convention.
+- Changed the placeholder `villager` back to `pending_mask`.
+  - Removed the broad `wood_team_mask.png` cart proof because it tinted the
+    whole wood material and looked like material UI instead of AoE-style art.
+- Updated Sovereign asset docs to state that the current cart/villager
+  placeholder still needs a proper small accent mask.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-aoe-team-color-scope-dummy \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-aoe-team-color-scope-pass2 \
+  --expect-backend METAL
+```
+
+Observed:
+
+- Non-strict readability remains valid with one pending production mask:
+  `SOVEREIGN_READABILITY_VALID units=3 production_ready=2 pending_team_masks=1`.
+- Strict readability fails intentionally until villager production art gets a subtle
+  authored accent mask.
+- Metal and OpenGL builds pass.
+- A first rerun failed with `expected METAL backend, got OPENGL` because the
+  OpenGL build had overwritten `bin/pf-arm64`; rebuilding Metal fixed the
+  launch target.
+- The follow-up Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-aoe-team-color-scope-pass2/`.
+- Capture summary:
+  - Seven nonblank Retina captures at `retina_scale=[2.0, 2.0]`.
+  - `asset_readability.production_ready_units=2`.
+  - `asset_readability.pending_team_masks=1`.
+  - Warning remains expected: `unit 'villager' still needs production team-color mask`.
+- The earlier all-black `screencapture` result was transient; direct desktop
+  screenshot checks and the pass2 probe both produced nonblank PNGs, so no
+  harness patch was needed for this slice.
+
+## Completed Slice 93 — Subtle Villager Mask And Wide-Zoom Healthbar Scale
+
+Goal:
+
+- Close the remaining strict team-mask gate with a deliberately small
+  cart/villager placeholder mask.
+- Keep the AoE-style rule intact: minimap colors can be strong, but main-world
+  unit materials only receive small authored accents.
+- Reduce far-zoom healthbar screen footprint so wide army views are readable
+  instead of dominated by green bars.
+
+Implementation:
+
+- Replaced `assets/models/cart/cart_team_mask.png` with a sparse RGB mask:
+  small strap/banner/tool-wrap islands only, no whole-wood tint.
+- Updated `scripts/sovereign/data/units.py` so the placeholder `villager`
+  uses `texture_mask` with `cart_team_mask.png`.
+  - Mask coverage: `4.8469%`.
+  - Max allowed coverage for this placeholder: `12%`.
+- Reduced backend-aligned healthbar zoom scaling in both renderers:
+  - `src/render/backend_metal.m`
+  - `src/render/gl_statusbar.c`
+  - Old scale: `clamp(160 / camera_height, 0.22, 1.0)`.
+  - New scale: `clamp(120 / camera_height, 0.12, 1.0)`.
+  - Close zoom remains unchanged because the scale still clamps to `1.0`.
+  - Wide zoom bars shrink materially, preserving unit visibility on large-map
+    army views.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py \
+  tools/asset_validation/validate_sovereign_readability.py \
+  scripts/macos/pf_metal_hd_world_readability_probe.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-villager-mask-wide-healthbars \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+```
+
+Observed:
+
+- Strict readability is now green:
+  `SOVEREIGN_READABILITY_VALID units=3 production_ready=3 pending_team_masks=0`.
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-villager-mask-wide-healthbars/`.
+- Summary confirms all three current Sovereign unit definitions now have texture
+  masks:
+  - `villager`: `cart_team_mask.png`, coverage `0.048469`.
+  - `militia`: `Knight_team_mask.png`, coverage `0.088352`.
+  - `archer`: `Mage_team_mask.png`, coverage `0.235363`.
+- Wide status proof remains Retina and nonblank. The wide status delta is small
+  and controlled:
+  - `edge_density +0.002091`
+  - `gradient_p95 +1`
+  - `luma_stddev +0.159`
+- OpenGL reference build still compiles with the same healthbar scale.
+
+Next:
+
+- Continue wide-zoom army readability with evidence-backed rules for unit
+  silhouettes, damaged/selected healthbar policy, and far-view army grouping.
+  This should stay separate from real HD/4K asset replacement.
+
+## Completed Slice 94 — Wide-Zoom Healthbar Visibility Policy
+
+Goal:
+
+- Move beyond smaller bars and reduce healthbar clutter at map-wide zoom.
+- Preserve close/mid combat feedback while making wide army views readable.
+- Keep the policy backend-neutral and aligned between Metal and OpenGL.
+
+Implementation:
+
+- Added a game-side wide-zoom healthbar visibility policy in
+  `src/game/game.c`.
+- Above `HEALTHBAR_WIDE_ZOOM_HEIGHT = 520.0`, a full-health unselected unit no
+  longer contributes a healthbar even when `pf.game.healthbar_mode` is
+  `HB_MODE_ALWAYS`.
+- Damaged units still show bars.
+- Selected units still show bars.
+- Close/mid zoom behavior is unchanged because the wide-zoom policy does not
+  activate below the threshold.
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` summary
+  records with:
+  - requested healthbar state
+  - whether the wide-zoom policy applies
+  - the wide-zoom threshold
+  - the rule name: `selected_or_damaged_only`
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-wide-healthbar-policy \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=7 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-wide-healthbar-policy/`.
+- Wide scene policy evidence:
+  - `wide_large_map_readability`: height `900`, selected `0`,
+    `wide_zoom_policy=True`.
+  - `wide_army_status_readability`: height `900`, selected `24`,
+    `wide_zoom_policy=True`.
+  - `dense_army_readability`: height `210`, selected `24`,
+    `wide_zoom_policy=False`.
+- Wide status impact is now very small:
+  - `edge_density +0.000699`
+  - `gradient_p95 +0`
+  - `luma_stddev +0.021`
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Next:
+
+- Continue wide-zoom readability with far-view silhouette/grouping evidence:
+  selected army group readability, damaged-unit visibility, and whether
+  clustered armies need strategic group markers at very high zoom.
+
+## Completed Slice 95 — Wide Army Status Evidence
+
+Goal:
+
+- Prove the wide-zoom healthbar policy with explicit no-bar, damaged-only, and
+  selected-army captures.
+- Keep selected markers neutral and thin, while checking whether damaged or
+  selected units remain readable without full-health bar clutter.
+- Use the result to decide whether strategic group markers are needed later.
+
+Implementation:
+
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` from seven
+  to ten captures.
+- Added three wide army evidence scenes:
+  - `wide_army_no_status_readability`: no selection, no healthbars.
+  - `wide_army_damaged_status_readability`: no selection, healthbars on, with
+    five staged damaged army units.
+  - `wide_army_selected_status_readability`: friendly army selected,
+    healthbars on.
+- Added `damaged_army` staging so the probe can distinguish damaged-only bars
+  from selected-unit bars.
+- Added per-capture `expected_bar_sources` to the summary so future regressions
+  can tell whether a wide-view status bar should come from selected, damaged,
+  or full-health unselected units.
+- Added readability rule deltas for damaged-only and selected-army wide status
+  captures.
+- During verification, a `1300` and then `1050` camera-height framing attempt
+  mostly captured sky/far-map edge, so the shipped evidence scene uses the
+  highest useful current proof height, `900`, targeting the army cluster. This
+  keeps the evidence about army readability rather than skybox coverage.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-14-hd-retina-wide-army-status-modes \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=10 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-14-hd-retina-wide-army-status-modes/`.
+- Retina capture scale remained `[2.0, 2.0]`.
+- Staged counts: `army=48`, `combat=14`, `heroes=6`,
+  `damaged_army=5`, `entities=108`.
+- Wide status deltas remain very small:
+  - wide selected-army status: `edge_density +0.000644`,
+    `gradient_p95 +0`, `luma_stddev +0.037`.
+  - damaged-only army status: `edge_density -0.000083`,
+    `gradient_p95 +0`, `luma_stddev +0.007`.
+  - selected-army status over the army cluster: `edge_density +0.000391`,
+    `gradient_p95 +0`, `luma_stddev +0.031`.
+- Expected bar sources are now explicit in the summary:
+  - no-bar baseline: selected `0`, damaged `0`, full-health unselected `0`.
+  - damaged-only: selected `0`, damaged `5`, full-health unselected `0`.
+  - selected army: selected `24`, damaged `0`, full-health unselected `0`.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Conclusion:
+
+- The current wide-zoom policy is evidence-backed: damaged and selected units
+  can surface status without turning every full-health unit into a screen-wide
+  bar field.
+- The next readability work should not make selection rings thicker or recolor
+  them. If larger maps still need extra readability, prototype subtle
+  strategic group markers as a separate opt-in layer at very high zoom.
+
+Next:
+
+- Either prototype subtle far-view group markers, or move to production
+  readability content: real unit silhouettes, terrain/biome richness, and
+  higher-quality close/wide unit assets.
+
+## Completed Slice 96 — Disable Metal World Team-Mask Tint For Parity
+
+Goal:
+
+- Apply the corrected AoE-style readability rule: strong faction color remains
+  on the minimap/UI, but world unit materials do not receive runtime team-color
+  tinting.
+- Match the OpenGL reference renderer by removing Metal's separate
+  team-mask/material-tint shader path.
+- Keep selection rings neutral and thin; future world readability should come
+  from silhouettes, authored assets, animation, terrain/biome richness, and
+  compact status UI.
+
+Implementation:
+
+- Removed the Metal static/skinned mesh fragment shader's `team_masks`
+  texture input and tint blend.
+- Stopped active Metal draw paths from creating or binding material team-mask
+  texture arrays.
+- Removed Metal-only team-mask texture helper state from the renderer private
+  data.
+- Changed Sovereign unit readability metadata from `texture_mask` to
+  `not_applicable` for world-material team color.
+- Updated asset/readability docs so team-color masks are no longer considered
+  part of the active renderer contract. Historical mask proof notes remain for
+  auditability, but are superseded by this slice.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-15-no-world-team-mask \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Readability validation passed with `production_ready=3` and
+  `pending_team_masks=0`.
+- Summary inspection confirms all active units use
+  `team_color_mode=not_applicable` and `team_color_mask=None`.
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=10 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-15-no-world-team-mask/`.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Next:
+
+- Resume production readability content: real unit silhouettes, terrain/biome
+  richness, close-zoom character clarity, and wide-zoom army readability
+  evidence without dynamic world tinting.
+
+## Completed Slice 97 — Map Edge And Sky Boundary Readability
+
+Goal:
+
+- Make the outer map perimeter read cleanly against the sky/void at wide zoom.
+- Keep the fix backend-neutral, so Metal and OpenGL show the same world-edge
+  rule.
+- Add proof coverage so future wide-map readability checks include the
+  terrain-to-sky transition, not only army/status clutter.
+
+Implementation:
+
+- Added a subtle backend-neutral outer map boundary line in `src/map/map.c`.
+  It uses the existing `R_Cmd_DrawQuad` path, so both Metal and OpenGL render
+  the same map perimeter marker.
+- Kept the line thin and dark enough to clarify the playable edge without
+  turning it into UI chrome.
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` with
+  `map_edge_sky_boundary_readability`.
+- Added a small map-edge scanner in the probe so the capture targets the actual
+  map edge for the currently loaded map instead of relying on a hard-coded
+  boundary coordinate.
+- Updated the readability summary contract to include map-boundary separation.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-15-map-edge-boundary-readability \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=11 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-15-map-edge-boundary-readability/`.
+- New boundary capture:
+  - `map_edge_sky_boundary_readability`
+  - target `[-464.0, -175.0]`
+  - `edge_density=0.073068`
+  - `gradient_p95=20`
+- Retina capture scale remained `[2.0, 2.0]`.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Conclusion:
+
+- The map no longer falls away into the sky without an explicit playable-edge
+  signal in the wide proof scene.
+- This is still a functional/readability boundary, not final production map
+  art. Later content work should replace the plain edge feeling with authored
+  coastlines, cliffs, fog/void treatment, or biome-specific edge dressing.
+
+Next:
+
+- Continue production readability content: richer terrain/biome variation,
+  authored map-edge dressing, and real unit silhouettes for close and wide zoom.
+
+## Completed Slice 98 — Biome And Map-Edge Dressing Fixture
+
+Goal:
+
+- Reduce the wide-zoom "floating grass plane" feeling with a small, verified
+  authored-looking terrain fixture.
+- Keep this as proof-scene staging, not final production map art.
+- Use existing terrain materials and props so the slice stays small and
+  backend-neutral.
+
+Implementation:
+
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` to stage a
+  dressed map-edge fixture before the HD readability captures.
+- Added a probe-only terrain patching path that paints a map-edge band with
+  existing sand, dirty-grass, cracked-dirt, dirt-road, and cobblestone materials.
+- Added edge dressing props from the existing asset set: rocks, dry/leafy trees,
+  fern/bush props, wood fences, and broken pillars.
+- Added summary counts for `edge_dressing` and `terrain_updates`, so future
+  proof runs show whether the fixture was actually staged.
+- Updated the current-limitations text to make clear that this is fixture-level
+  biome/edge dressing; final maps still need authored terrain art and placement.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+git diff --check
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-15-biome-edge-dressing-readability \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=11 highdpi=1 staged=123`.
+- Proof output:
+  `visual_parity_captures/2026-05-15-biome-edge-dressing-readability/`.
+- Summary counts:
+  - `edge_dressing=15`
+  - `terrain_updates=2257`
+  - Retina capture scale `[2.0, 2.0]`
+- Key captures:
+  - `wide_large_map_readability`: `edge_density=0.113928`,
+    `gradient_p95=25`.
+  - `map_edge_sky_boundary_readability`: target `[-464.0, -175.0]`,
+    `edge_density=0.084074`, `gradient_p95=22`.
+- Visual inspection shows a clearer map/sky separation with a dressed sand/dirt
+  edge band, props, and terrain variation. The result is still visibly a
+  rectangular test fixture, which is acceptable for this proof slice.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Conclusion:
+
+- The HD readability proof now covers both the backend-neutral map boundary and
+  a first authored-looking biome/edge dressing fixture.
+- This does not replace real production map work. Final maps still need proper
+  coastline/cliff/void treatment, richer biome transitions, and hand-authored
+  object placement.
+
+Next:
+
+- Move from probe-level dressing to production readability content: real unit
+  silhouettes/animation clarity, production terrain/biome art direction, and
+  map-authoring rules for clean edges at wide zoom.

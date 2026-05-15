@@ -856,6 +856,7 @@ static const char *s_static_mesh_shader_source =
 "    float4 light_color;\n"
 "    float4 light_pos;\n"
 "    float4 effect_params;\n"
+"    float4 team_color;\n"
 "    float4 shadow_params;\n"
 "    float4 clip_params;\n"
 "};\n"
@@ -1314,6 +1315,7 @@ struct metal_static_mesh_uniforms{
     vector_float4 light_color;
     vector_float4 light_pos;
     vector_float4 effect_params;
+    vector_float4 team_color;
     vector_float4 shadow_params;
     vector_float4 clip_params;
 };
@@ -1404,8 +1406,10 @@ static bool append_skinned_anim_mesh(const struct render_private *priv,
                                      const mat4x4_t *model,
                                      struct vertex *dst,
                                      size_t *dst_idx);
-static void render_static_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent);
-static void render_skinned_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent);
+static void render_static_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent,
+                                    vector_float4 team_color);
+static void render_skinned_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent,
+                                     vector_float4 team_color);
 static bool render_shadow_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int start,
                                                  const struct render_private *priv,
                                                  size_t group_count);
@@ -5483,6 +5487,25 @@ static bool texture_has_cutout_alpha(const unsigned char *rgba, size_t npixels)
     return false;
 }
 
+static vector_float4 team_color_from_rstate(vec4_t color)
+{
+    return (vector_float4){color.x, color.y, color.z, color.w};
+}
+
+static vector_float4 disabled_team_color(void)
+{
+    return (vector_float4){0.0f, 0.0f, 0.0f, 0.0f};
+}
+
+static bool same_team_color(vec4_t a, vec4_t b)
+{
+    const float eps = 1.0f / 512.0f;
+    return fabsf(a.x - b.x) <= eps
+        && fabsf(a.y - b.y) <= eps
+        && fabsf(a.z - b.z) <= eps
+        && fabsf(a.w - b.w) <= eps;
+}
+
 static id<MTLTexture> ensure_material_texture_array(struct render_private *priv)
 {
     if(!priv || !priv->num_materials || !s_device)
@@ -5589,7 +5612,8 @@ static void render_static_vertex_stream(const struct render_private *priv,
                                         matrix_float4x4 normal_transform,
                                         const struct vertex *verts,
                                         size_t verts_size,
-                                        bool translucent)
+                                        bool translucent,
+                                        vector_float4 team_color)
 {
     struct render_private *mutable_priv = (struct render_private *)priv;
     id<MTLRenderPipelineState> pipeline = nil;
@@ -5634,6 +5658,7 @@ static void render_static_vertex_stream(const struct render_private *priv,
             (priv->uses_pose_buffer || mutable_priv->metal_materials_have_cutout_alpha) ? 1.0f : 0.0f,
             0.0f,
         },
+        .team_color = disabled_team_color(),
         .shadow_params = {
             shadow_enabled_for_draw() ? 1.0f : 0.0f,
             0.002f,
@@ -5676,7 +5701,8 @@ static void render_static_vertex_stream(const struct render_private *priv,
                 vertexCount:vertex_count];
 }
 
-static void render_static_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent)
+static void render_static_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent,
+                                    vector_float4 team_color)
 {
     struct render_private *mutable_priv = (struct render_private *)priv;
     id<MTLRenderPipelineState> pipeline = nil;
@@ -5722,6 +5748,7 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
             mutable_priv->metal_materials_have_cutout_alpha ? 1.0f : 0.0f,
             0.0f,
         },
+        .team_color = disabled_team_color(),
         .shadow_params = {
             shadow_enabled_for_draw() ? 1.0f : 0.0f,
             0.002f,
@@ -5817,7 +5844,8 @@ static bool fill_gpu_skinned_instance(uint32_t uid, const mat4x4_t *model,
 
 static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int start,
                                           const struct render_private *priv,
-                                          size_t group_count)
+                                          size_t group_count,
+                                          vec4_t team_color_src)
 {
     if(!gpu_skinning_enabled() || !ents || !priv || !priv->metal_anim_verts
     || !priv->metal_anim_verts_size || !priv->mesh.num_verts || !group_count)
@@ -5826,6 +5854,7 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
         return false;
 
     struct render_private *mutable_priv = (struct render_private *)priv;
+    vector_float4 team_color = disabled_team_color();
     if(!(s_water_scene_pass_active && s_water_scene_encoder))
         frame_begin();
     id<MTLRenderCommandEncoder> encoder = active_scene_encoder();
@@ -5853,7 +5882,8 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
     size_t mat_cursor = 0;
     for(int j = start; j < nents && inst_idx < group_count; j++) {
         const struct ent_anim_rstate *curr = &vec_AT(ents, j);
-        if(curr->translucent || curr->render_private != priv)
+        if(curr->translucent || curr->render_private != priv
+        || !same_team_color(curr->team_color, team_color_src))
             continue;
         if(!fill_gpu_skinned_instance(curr->uid, &curr->model, &instances[inst_idx],
                                       skin_mats, skin_normal_mats, max_mats, &mat_cursor)) {
@@ -5906,6 +5936,7 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
             1.0f,
             0.0f,
         },
+        .team_color = team_color,
         .shadow_params = {
             shadow_enabled_for_draw() ? 1.0f : 0.0f,
             0.002f,
@@ -6044,75 +6075,23 @@ static bool render_shadow_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents
     return true;
 }
 
+static void render_world_colored_verts(const struct colored_vert *verts, size_t nverts,
+                                       MTLPrimitiveType primitive);
+
 static void render_world_colored_strip(const vec3_t *positions, size_t nverts, const vec3_t *color)
 {
-    id<MTLRenderPipelineState> pipeline = nil;
     if(!positions || !nverts || !color)
         return;
-    if(!s_have_scene_view || !s_have_scene_proj)
-        return;
 
-    struct vertex *verts = malloc(nverts * sizeof(*verts));
+    struct colored_vert *verts = malloc(nverts * sizeof(*verts));
     if(!verts)
         return;
-
     for(size_t i = 0; i < nverts; i++) {
         verts[i].pos = positions[i];
-        verts[i].uv = (vec2_t){0.0f, 0.0f};
-        verts[i].normal = (vec3_t){0.0f, 1.0f, 0.0f};
-        verts[i].material_idx = 0;
+        verts[i].color = (vec4_t){color->x, color->y, color->z, 1.0f};
     }
-
-    frame_begin();
-    if(!s_frame_encoder) {
-        free(verts);
-        return;
-    }
-    pipeline = ensure_static_mesh_pipeline(false, frame_uses_msaa(), false);
-    if(!pipeline) {
-        free(verts);
-        return;
-    }
-
-    id<MTLBuffer> vertex_buffer = [s_device newBufferWithBytes:verts
-        length:nverts * sizeof(*verts) options:MTLResourceStorageModeShared];
+    render_world_colored_verts(verts, nverts, MTLPrimitiveTypeTriangleStrip);
     free(verts);
-    if(!vertex_buffer)
-        return;
-
-    mat4x4_t identity;
-    PFM_Mat4x4_Identity(&identity);
-
-    struct metal_static_mesh_uniforms uniforms = {
-        .model = matrix_from_pf_mat4(&identity),
-        .view = s_scene_view,
-        .proj = s_scene_proj,
-        .view_pos = {s_scene_view_pos.x, s_scene_view_pos.y, s_scene_view_pos.z, 1.0f},
-        .ambient_color = {s_light_ambient.x, s_light_ambient.y, s_light_ambient.z, 1.0f},
-        .light_color = {s_light_color.x, s_light_color.y, s_light_color.z, 1.0f},
-        .light_pos = {s_light_pos.x, s_light_pos.y, s_light_pos.z, 1.0f},
-    };
-    for(size_t i = 0; i < MAX_MATERIALS; i++) {
-        uniforms.material_diffuse[i] = (vector_float4){color->x, color->y, color->z, 1.0f};
-        uniforms.material_ambient[i] = (vector_float4){1.0f, 0.0f, 0.0f, 0.0f};
-        uniforms.material_specular[i] = (vector_float4){0.0f, 0.0f, 0.0f, 0.0f};
-    }
-
-    id<MTLBuffer> uniform_buffer = [s_device newBufferWithBytes:&uniforms
-        length:sizeof(uniforms) options:MTLResourceStorageModeShared];
-    if(!uniform_buffer)
-        return;
-
-    [s_frame_encoder setRenderPipelineState:pipeline];
-    [s_frame_encoder setDepthStencilState:nil];
-    [s_frame_encoder setCullMode:MTLCullModeNone];
-    [s_frame_encoder setFrontFacingWinding:MTLWindingCounterClockwise];
-    [s_frame_encoder setVertexBuffer:vertex_buffer offset:0 atIndex:0];
-    [s_frame_encoder setVertexBuffer:uniform_buffer offset:0 atIndex:1];
-    [s_frame_encoder setFragmentBuffer:uniform_buffer offset:0 atIndex:1];
-    [s_frame_encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                        vertexStart:0
-                        vertexCount:nverts];
 }
 
 static void render_world_colored_verts(const struct colored_vert *verts, size_t nverts,
@@ -6368,6 +6347,12 @@ static void render_screenspace_rect(float left, float top, float right, float bo
     render_screenspace_colored_triangles(verts, sizeof(verts) / sizeof(verts[0]), color);
 }
 
+static float healthbar_zoom_scale(const struct camera *cam)
+{
+    const float cam_height = fmaxf(Camera_GetHeight(cam), 1.0f);
+    return SDL_clamp(120.0f / cam_height, 0.12f, 1.0f);
+}
+
 static void render_healthbars(const size_t *num_ents, GLfloat *ent_health_pc,
                               vec3_t *ent_top_pos_ws, int *yoffsets,
                               const struct camera *cam)
@@ -6384,9 +6369,10 @@ static void render_healthbars(const size_t *num_ents, GLfloat *ent_health_pc,
     Camera_MakeViewMat(cam, &view);
     Camera_MakeProjMat(cam, &proj);
 
-    const float half_h = fmaxf(4.0f / 1080.0f * height, 4.0f);
-    const float half_w = 40.0f / 1080.0f * height;
-    const float border = 2.0f;
+    const float zoom_scale = healthbar_zoom_scale(cam);
+    const float half_h = fmaxf(4.0f / 1080.0f * height * zoom_scale, 2.0f);
+    const float half_w = fmaxf(40.0f / 1080.0f * height * zoom_scale, 10.0f);
+    const float border = fmaxf(2.0f * zoom_scale, 1.0f);
     const vec3_t bg = {0.0f, 0.0f, 0.0f};
 
     for(size_t i = 0; i < *num_ents; i++) {
@@ -7188,7 +7174,8 @@ static void render_debug_obb(const struct aabb *aabb, const mat4x4_t *model)
     render_world_colored_verts(vbuff, sizeof(vbuff) / sizeof(vbuff[0]), MTLPrimitiveTypeLine);
 }
 
-static void render_skinned_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent)
+static void render_skinned_mesh_draw(const struct render_private *priv, const mat4x4_t *model, bool translucent,
+                                     vector_float4 team_color)
 {
     if(!priv || !priv->metal_is_anim_mesh || !priv->uses_pose_buffer)
         return;
@@ -7278,7 +7265,9 @@ static void render_skinned_mesh_draw(const struct render_private *priv, const ma
         }
     }
 
-    render_static_vertex_stream(priv, model, normal_transform, skinned, priv->mesh.num_verts * sizeof(*skinned), translucent);
+    render_static_vertex_stream(priv, model, normal_transform, skinned,
+                                priv->mesh.num_verts * sizeof(*skinned), translucent,
+                                team_color);
     free(skinned);
 }
 
@@ -7413,7 +7402,8 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
             const struct render_private *priv = curr->render_private;
             if(!priv || !priv->metal_is_static_mesh || priv->uses_pose_buffer)
                 continue;
-            render_static_mesh_draw(priv, &curr->model, curr->translucent);
+            render_static_mesh_draw(priv, &curr->model, curr->translucent,
+                                    team_color_from_rstate(curr->team_color));
         }
         return;
     }
@@ -7424,12 +7414,13 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
 
         const struct ent_stat_rstate *curr = &vec_AT(mutable_ents, i);
         const struct render_private *priv = curr->render_private;
+        vector_float4 team_color = team_color_from_rstate(curr->team_color);
         if(!priv || !priv->metal_is_static_mesh || priv->uses_pose_buffer)
             continue;
 
         if(curr->translucent && !priv->metal_static_verts) {
             consumed[i] = true;
-            render_static_mesh_draw(priv, &curr->model, true);
+            render_static_mesh_draw(priv, &curr->model, true, team_color);
             continue;
         }
 
@@ -7438,7 +7429,8 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
             int j = i + 1;
             while(j < nents) {
                 const struct ent_stat_rstate *other = &vec_AT(mutable_ents, j);
-                if(!other->translucent || other->render_private != priv)
+                if(!other->translucent || other->render_private != priv
+                || !same_team_color(other->team_color, curr->team_color))
                     break;
                 total_verts += priv->mesh.num_verts;
                 j++;
@@ -7446,14 +7438,14 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
 
             if(j == i + 1) {
                 consumed[i] = true;
-                render_static_mesh_draw(priv, &curr->model, true);
+                render_static_mesh_draw(priv, &curr->model, true, team_color);
                 continue;
             }
 
             struct vertex *combined = malloc(total_verts * sizeof(*combined));
             if(!combined) {
                 consumed[i] = true;
-                render_static_mesh_draw(priv, &curr->model, true);
+                render_static_mesh_draw(priv, &curr->model, true, team_color);
                 continue;
             }
 
@@ -7466,14 +7458,16 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
 
             mat4x4_t identity;
             PFM_Mat4x4_Identity(&identity);
-            render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity), combined, dst_idx * sizeof(*combined), true);
+            render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity),
+                                        combined, dst_idx * sizeof(*combined), true,
+                                        team_color);
             free(combined);
             continue;
         }
 
         if(!priv->metal_static_verts || !priv->mesh.num_verts) {
             consumed[i] = true;
-            render_static_mesh_draw(priv, &curr->model, false);
+            render_static_mesh_draw(priv, &curr->model, false, team_color);
             continue;
         }
 
@@ -7486,7 +7480,8 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
                 continue;
 
             const struct ent_stat_rstate *other = &vec_AT(mutable_ents, j);
-            if(other->translucent || other->render_private != priv)
+            if(other->translucent || other->render_private != priv
+            || !same_team_color(other->team_color, curr->team_color))
                 continue;
 
             consumed[j] = true;
@@ -7495,18 +7490,19 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
         }
 
         if(group_count == 1) {
-            render_static_mesh_draw(priv, &curr->model, false);
+            render_static_mesh_draw(priv, &curr->model, false, team_color);
             continue;
         }
 
         struct vertex *combined = malloc(total_verts * sizeof(*combined));
         if(!combined) {
-            render_static_mesh_draw(priv, &curr->model, false);
+            render_static_mesh_draw(priv, &curr->model, false, team_color);
             for(int j = i + 1; j < nents; j++) {
                 const struct ent_stat_rstate *other = &vec_AT(mutable_ents, j);
-                if(other->translucent || other->render_private != priv)
+                if(other->translucent || other->render_private != priv
+                || !same_team_color(other->team_color, curr->team_color))
                     continue;
-                render_static_mesh_draw(priv, &other->model, false);
+                render_static_mesh_draw(priv, &other->model, false, team_color);
             }
             continue;
         }
@@ -7515,14 +7511,17 @@ static void render_batched_stat_entities(const vec_rstat_t *ents)
         append_transformed_static_mesh(priv, &curr->model, combined, &dst_idx);
         for(int j = i + 1; j < nents; j++) {
             const struct ent_stat_rstate *other = &vec_AT(mutable_ents, j);
-            if(other->translucent || other->render_private != priv)
+            if(other->translucent || other->render_private != priv
+            || !same_team_color(other->team_color, curr->team_color))
                 continue;
             append_transformed_static_mesh(priv, &other->model, combined, &dst_idx);
         }
 
         mat4x4_t identity;
         PFM_Mat4x4_Identity(&identity);
-        render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity), combined, dst_idx * sizeof(*combined), false);
+        render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity),
+                                    combined, dst_idx * sizeof(*combined), false,
+                                    team_color);
         free(combined);
     }
 
@@ -7544,7 +7543,8 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
             if(!priv || !priv->metal_is_anim_mesh || !priv->uses_pose_buffer)
                 continue;
             set_current_anim_uid(curr->uid);
-            render_skinned_mesh_draw(priv, &curr->model, curr->translucent);
+            render_skinned_mesh_draw(priv, &curr->model, curr->translucent,
+                                     team_color_from_rstate(curr->team_color));
         }
         return;
     }
@@ -7555,13 +7555,14 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
 
         const struct ent_anim_rstate *curr = &vec_AT(mutable_ents, i);
         const struct render_private *priv = curr->render_private;
+        vector_float4 team_color = team_color_from_rstate(curr->team_color);
         if(!priv || !priv->metal_is_anim_mesh || !priv->uses_pose_buffer)
             continue;
 
         if(curr->translucent && !priv->metal_anim_verts) {
             consumed[i] = true;
             set_current_anim_uid(curr->uid);
-            render_skinned_mesh_draw(priv, &curr->model, true);
+            render_skinned_mesh_draw(priv, &curr->model, true, team_color);
             continue;
         }
 
@@ -7570,7 +7571,8 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
             int j = i + 1;
             while(j < nents) {
                 const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
-                if(!other->translucent || other->render_private != priv)
+                if(!other->translucent || other->render_private != priv
+                || !same_team_color(other->team_color, curr->team_color))
                     break;
                 total_verts += priv->mesh.num_verts;
                 j++;
@@ -7579,7 +7581,7 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
             if(j == i + 1) {
                 consumed[i] = true;
                 set_current_anim_uid(curr->uid);
-                render_skinned_mesh_draw(priv, &curr->model, true);
+                render_skinned_mesh_draw(priv, &curr->model, true, team_color);
                 continue;
             }
 
@@ -7587,7 +7589,7 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
             if(!combined) {
                 consumed[i] = true;
                 set_current_anim_uid(curr->uid);
-                render_skinned_mesh_draw(priv, &curr->model, true);
+                render_skinned_mesh_draw(priv, &curr->model, true, team_color);
                 continue;
             }
 
@@ -7604,14 +7606,16 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
                 for(int k = i; k < j; k++) {
                     const struct ent_anim_rstate *other = &vec_AT(mutable_ents, k);
                     set_current_anim_uid(other->uid);
-                    render_skinned_mesh_draw(priv, &other->model, true);
+                    render_skinned_mesh_draw(priv, &other->model, true, team_color);
                 }
                 continue;
             }
 
             mat4x4_t identity;
             PFM_Mat4x4_Identity(&identity);
-            render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity), combined, dst_idx * sizeof(*combined), true);
+            render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity),
+                                        combined, dst_idx * sizeof(*combined), true,
+                                        team_color);
             free(combined);
             continue;
         }
@@ -7619,7 +7623,7 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
         if(!priv->metal_anim_verts || !priv->mesh.num_verts) {
             consumed[i] = true;
             set_current_anim_uid(curr->uid);
-            render_skinned_mesh_draw(priv, &curr->model, false);
+            render_skinned_mesh_draw(priv, &curr->model, false, team_color);
             continue;
         }
 
@@ -7632,7 +7636,8 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
                 continue;
 
             const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
-            if(other->translucent || other->render_private != priv)
+            if(other->translucent || other->render_private != priv
+            || !same_team_color(other->team_color, curr->team_color))
                 continue;
 
             consumed[j] = true;
@@ -7642,23 +7647,24 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
 
         if(group_count == 1) {
             set_current_anim_uid(curr->uid);
-            render_skinned_mesh_draw(priv, &curr->model, false);
+            render_skinned_mesh_draw(priv, &curr->model, false, team_color);
             continue;
         }
 
-        if(render_gpu_skinned_anim_batch(mutable_ents, nents, i, priv, group_count))
+        if(render_gpu_skinned_anim_batch(mutable_ents, nents, i, priv, group_count, curr->team_color))
             continue;
 
         struct vertex *combined = malloc(total_verts * sizeof(*combined));
         if(!combined) {
             set_current_anim_uid(curr->uid);
-            render_skinned_mesh_draw(priv, &curr->model, false);
+            render_skinned_mesh_draw(priv, &curr->model, false, team_color);
             for(int j = i + 1; j < nents; j++) {
                 const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
-                if(other->translucent || other->render_private != priv)
+                if(other->translucent || other->render_private != priv
+                || !same_team_color(other->team_color, curr->team_color))
                     continue;
                 set_current_anim_uid(other->uid);
-                render_skinned_mesh_draw(priv, &other->model, false);
+                render_skinned_mesh_draw(priv, &other->model, false, team_color);
             }
             continue;
         }
@@ -7668,7 +7674,8 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
         ok = append_skinned_anim_mesh(priv, curr->uid, &curr->model, combined, &dst_idx);
         for(int j = i + 1; ok && j < nents; j++) {
             const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
-            if(other->translucent || other->render_private != priv)
+            if(other->translucent || other->render_private != priv
+            || !same_team_color(other->team_color, curr->team_color))
                 continue;
             ok = append_skinned_anim_mesh(priv, other->uid, &other->model, combined, &dst_idx);
         }
@@ -7676,20 +7683,23 @@ static void render_batched_anim_entities(const vec_ranim_t *ents)
         if(!ok) {
             free(combined);
             set_current_anim_uid(curr->uid);
-            render_skinned_mesh_draw(priv, &curr->model, false);
+            render_skinned_mesh_draw(priv, &curr->model, false, team_color);
             for(int j = i + 1; j < nents; j++) {
                 const struct ent_anim_rstate *other = &vec_AT(mutable_ents, j);
-                if(other->translucent || other->render_private != priv)
+                if(other->translucent || other->render_private != priv
+                || !same_team_color(other->team_color, curr->team_color))
                     continue;
                 set_current_anim_uid(other->uid);
-                render_skinned_mesh_draw(priv, &other->model, false);
+                render_skinned_mesh_draw(priv, &other->model, false, team_color);
             }
             continue;
         }
 
         mat4x4_t identity;
         PFM_Mat4x4_Identity(&identity);
-        render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity), combined, dst_idx * sizeof(*combined), false);
+        render_static_vertex_stream(priv, &identity, matrix_from_pf_mat4(&identity),
+                                    combined, dst_idx * sizeof(*combined), false,
+                                    team_color);
         free(combined);
     }
 
@@ -7895,11 +7905,11 @@ static void dispatch_or_drop_cmd(struct rcmd cmd)
             return;
         }
         if(priv && priv->metal_is_static_mesh && !priv->uses_pose_buffer) {
-            render_static_mesh_draw(priv, cmd.args[1], translucent);
+            render_static_mesh_draw(priv, cmd.args[1], translucent, disabled_team_color());
             return;
         }
         if(priv && priv->metal_is_anim_mesh && priv->uses_pose_buffer) {
-            render_skinned_mesh_draw(priv, cmd.args[1], translucent);
+            render_skinned_mesh_draw(priv, cmd.args[1], translucent, disabled_team_color());
         }
         return;
     }

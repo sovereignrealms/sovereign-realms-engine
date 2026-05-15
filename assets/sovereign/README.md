@@ -37,3 +37,24 @@ PFSCENE.
 
 Do not place Microsoft, Ensemble Studios, or Age of Empires assets in this
 tree. Use original, commissioned, or clearly licensed assets only.
+
+## Unit Readability Requirements
+
+Every production unit must have readability metadata in
+`scripts/sovereign/data/units.py`:
+
+- a far-view silhouette class
+- a minimum pixel target for wide zoom
+- a marker policy for when healthbars or other UI indicators may appear
+- an explicit world-material team-color policy
+
+World materials do not use a dynamic team-color tint path. OpenGL has no
+equivalent mask shader, so Metal also keeps this disabled for parity. Strong
+team identity belongs on the minimap and other deliberate UI surfaces; world
+unit readability should come from authored silhouettes, animation, equipment,
+small built-in costume accents, and compact health/status UI.
+
+The historical mask proof assets may remain in the tree while older notes are
+kept for auditability, but they are not part of the active renderer contract.
+Final Sovereign unit art should replace the placeholder Knight/Mage/cart assets
+with purpose-built models and textures that are readable without runtime tinting.
