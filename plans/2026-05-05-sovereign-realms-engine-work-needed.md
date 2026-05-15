@@ -182,20 +182,16 @@ file records execution status as slices are completed and verified.
   proof captures. A first actual readability overlay slice is also DONE:
   selected player-owned units keep neutral white thin rings, Metal world-color
   overlays render through the native color pipeline, and healthbars shrink on
-  wide zoom. A first asset-readability gate is also DONE: current Sovereign
-  placeholder units now carry far-view silhouette, minimum-pixel, marker-policy,
-  and team-color-mask metadata, and strict validation intentionally blocks
-  production readiness until real team-color masks exist. A first one-unit
-  team-color-mask proof is also DONE for the militia/Knight placeholder:
-  `Knight_team_mask.png` validates at 512x512 and the scoped strict gate passes
-  for `militia`. A renderer-side mask proof is now DONE too: faction color is
-  carried through the shared render state, Metal loads sibling
-  `<texture>_team_mask.png` arrays, and the HD readability proof shows
-  faction-tinted authored accents while selection rings remain neutral white.
-  The earlier cart-wide `wood_team_mask.png` proof was intentionally backed
-  out because it tinted too much of the main-world material and did not match
-  the AoE-style direction. Strict readiness is again blocked on purpose until
-  the villager/cart placeholder gets subtle authored accent art.
+  wide zoom. Current Sovereign placeholder units now carry far-view silhouette,
+  minimum-pixel, marker-policy, and AoE-style team-color metadata. The earlier
+  dynamic world-material team-mask work was intentionally backed out because
+  the OpenGL reference has no matching shader path and broad main-world tinting
+  did not match the intended AoE-style direction. Strong team color remains a
+  minimap/UI signal; world readability should come from silhouettes, animation,
+  small authored accents in final assets, and terrain/biome richness. Map-edge
+  and sky-boundary readability is DONE for a first backend-neutral proof line,
+  and fixture-level biome/edge dressing is now DONE in the HD readability probe
+  using existing terrain materials and props.
 - Sovereign repo packaging/push prep: DONE for publish preflight, artifact
   ignore updates, README/NOTICE/CHANGES polish, handoff checklist, and the
   first Sovereign organization checkpoint merge.
@@ -8423,3 +8419,209 @@ Next:
 - Either prototype subtle far-view group markers, or move to production
   readability content: real unit silhouettes, terrain/biome richness, and
   higher-quality close/wide unit assets.
+
+## Completed Slice 96 — Disable Metal World Team-Mask Tint For Parity
+
+Goal:
+
+- Apply the corrected AoE-style readability rule: strong faction color remains
+  on the minimap/UI, but world unit materials do not receive runtime team-color
+  tinting.
+- Match the OpenGL reference renderer by removing Metal's separate
+  team-mask/material-tint shader path.
+- Keep selection rings neutral and thin; future world readability should come
+  from silhouettes, authored assets, animation, terrain/biome richness, and
+  compact status UI.
+
+Implementation:
+
+- Removed the Metal static/skinned mesh fragment shader's `team_masks`
+  texture input and tint blend.
+- Stopped active Metal draw paths from creating or binding material team-mask
+  texture arrays.
+- Removed Metal-only team-mask texture helper state from the renderer private
+  data.
+- Changed Sovereign unit readability metadata from `texture_mask` to
+  `not_applicable` for world-material team color.
+- Updated asset/readability docs so team-color masks are no longer considered
+  part of the active renderer contract. Historical mask proof notes remain for
+  auditability, but are superseded by this slice.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/sovereign/data/units.py \
+  scripts/sovereign/data/readability.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-15-no-world-team-mask \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Readability validation passed with `production_ready=3` and
+  `pending_team_masks=0`.
+- Summary inspection confirms all active units use
+  `team_color_mode=not_applicable` and `team_color_mask=None`.
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=10 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-15-no-world-team-mask/`.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Next:
+
+- Resume production readability content: real unit silhouettes, terrain/biome
+  richness, close-zoom character clarity, and wide-zoom army readability
+  evidence without dynamic world tinting.
+
+## Completed Slice 97 — Map Edge And Sky Boundary Readability
+
+Goal:
+
+- Make the outer map perimeter read cleanly against the sky/void at wide zoom.
+- Keep the fix backend-neutral, so Metal and OpenGL show the same world-edge
+  rule.
+- Add proof coverage so future wide-map readability checks include the
+  terrain-to-sky transition, not only army/status clutter.
+
+Implementation:
+
+- Added a subtle backend-neutral outer map boundary line in `src/map/map.c`.
+  It uses the existing `R_Cmd_DrawQuad` path, so both Metal and OpenGL render
+  the same map perimeter marker.
+- Kept the line thin and dark enough to clarify the playable edge without
+  turning it into UI chrome.
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` with
+  `map_edge_sky_boundary_readability`.
+- Added a small map-edge scanner in the probe so the capture targets the actual
+  map edge for the currently loaded map instead of relying on a hard-coded
+  boundary coordinate.
+- Updated the readability summary contract to include map-boundary separation.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-15-map-edge-boundary-readability \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=11 highdpi=1 staged=108`.
+- Proof output:
+  `visual_parity_captures/2026-05-15-map-edge-boundary-readability/`.
+- New boundary capture:
+  - `map_edge_sky_boundary_readability`
+  - target `[-464.0, -175.0]`
+  - `edge_density=0.073068`
+  - `gradient_p95=20`
+- Retina capture scale remained `[2.0, 2.0]`.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Conclusion:
+
+- The map no longer falls away into the sky without an explicit playable-edge
+  signal in the wide proof scene.
+- This is still a functional/readability boundary, not final production map
+  art. Later content work should replace the plain edge feeling with authored
+  coastlines, cliffs, fog/void treatment, or biome-specific edge dressing.
+
+Next:
+
+- Continue production readability content: richer terrain/biome variation,
+  authored map-edge dressing, and real unit silhouettes for close and wide zoom.
+
+## Completed Slice 98 — Biome And Map-Edge Dressing Fixture
+
+Goal:
+
+- Reduce the wide-zoom "floating grass plane" feeling with a small, verified
+  authored-looking terrain fixture.
+- Keep this as proof-scene staging, not final production map art.
+- Use existing terrain materials and props so the slice stays small and
+  backend-neutral.
+
+Implementation:
+
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` to stage a
+  dressed map-edge fixture before the HD readability captures.
+- Added a probe-only terrain patching path that paints a map-edge band with
+  existing sand, dirty-grass, cracked-dirt, dirt-road, and cobblestone materials.
+- Added edge dressing props from the existing asset set: rocks, dry/leafy trees,
+  fern/bush props, wood fences, and broken pillars.
+- Added summary counts for `edge_dressing` and `terrain_updates`, so future
+  proof runs show whether the fixture was actually staged.
+- Updated the current-limitations text to make clear that this is fixture-level
+  biome/edge dressing; final maps still need authored terrain art and placement.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_metal_hd_world_readability_probe.py
+git diff --check
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-15-biome-edge-dressing-readability \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=11 highdpi=1 staged=123`.
+- Proof output:
+  `visual_parity_captures/2026-05-15-biome-edge-dressing-readability/`.
+- Summary counts:
+  - `edge_dressing=15`
+  - `terrain_updates=2257`
+  - Retina capture scale `[2.0, 2.0]`
+- Key captures:
+  - `wide_large_map_readability`: `edge_density=0.113928`,
+    `gradient_p95=25`.
+  - `map_edge_sky_boundary_readability`: target `[-464.0, -175.0]`,
+    `edge_density=0.084074`, `gradient_p95=22`.
+- Visual inspection shows a clearer map/sky separation with a dressed sand/dirt
+  edge band, props, and terrain variation. The result is still visibly a
+  rectangular test fixture, which is acceptable for this proof slice.
+- OpenGL reference build compiles.
+- `bin/pf-arm64` was rebuilt back to Metal after the OpenGL compile check.
+
+Conclusion:
+
+- The HD readability proof now covers both the backend-neutral map boundary and
+  a first authored-looking biome/edge dressing fixture.
+- This does not replace real production map work. Final maps still need proper
+  coastline/cliff/void treatment, richer biome transitions, and hand-authored
+  object placement.
+
+Next:
+
+- Move from probe-level dressing to production readability content: real unit
+  silhouettes/animation clarity, production terrain/biome art direction, and
+  map-authoring rules for clean edges at wide zoom.

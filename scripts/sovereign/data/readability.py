@@ -292,6 +292,8 @@ def _validate_unit(unit_id, unit, basedir):
                         )
     elif mode == "pending_mask":
         warnings.append("unit '{0}' still needs production team-color mask".format(unit_id))
+    elif mode == "not_applicable" and team_color.get("mask"):
+        errors.append("unit '{0}' disables world team-color tint but still references a mask".format(unit_id))
 
     return errors, warnings
 
@@ -325,7 +327,7 @@ def summarize_unit_readability(units=None, basedir="."):
         team_color = readability.get("team_color") or {}
         far_view = readability.get("far_view") or {}
         mode = team_color.get("mode")
-        if mode == "texture_mask":
+        if mode in ("texture_mask", "not_applicable"):
             production_ready += 1
         elif mode == "pending_mask":
             pending_team_masks += 1

@@ -114,6 +114,34 @@ static struct tile *tile_for_desc(const struct map *map, const struct tile_desc 
     return ret;
 }
 
+static void m_render_outer_boundary(const struct map *map)
+{
+    struct map_resolution res;
+    M_GetResolution(map, &res);
+
+    const float width = res.chunk_w * res.field_w;
+    const float height = res.chunk_h * res.field_h;
+    const float line_width = 2.0f;
+    const vec3_t color = {0.12f, 0.14f, 0.12f};
+    vec2_t corners[4] = {
+        {map->pos.x,         map->pos.z},
+        {map->pos.x - width, map->pos.z},
+        {map->pos.x - width, map->pos.z + height},
+        {map->pos.x,         map->pos.z + height},
+    };
+
+    R_PushCmd((struct rcmd){
+        .func = R_Cmd_DrawQuad,
+        .nargs = 4,
+        .args = {
+            R_PushArg(corners, sizeof(corners)),
+            R_PushArg(&line_width, sizeof(line_width)),
+            R_PushArg(&color, sizeof(color)),
+            (void*)map,
+        },
+    });
+}
+
 /*****************************************************************************/
 /* EXTERN FUNCTIONS                                                          */
 /*****************************************************************************/
@@ -186,6 +214,8 @@ void M_RenderEntireMap(const struct map *map, bool shadows, enum render_pass pas
     }}
 
     R_PushCmd((struct rcmd){ R_Cmd_MapEnd, 0 });
+    if(pass == RENDER_PASS_REGULAR)
+        m_render_outer_boundary(map);
 }
 
 void M_RenderVisibleMap(const struct map *map, const struct camera *cam,
@@ -255,6 +285,8 @@ void M_RenderVisibleMap(const struct map *map, const struct camera *cam,
         }
     }}
     R_PushCmd((struct rcmd){ R_Cmd_MapEnd, 0 });
+    if(pass == RENDER_PASS_REGULAR)
+        m_render_outer_boundary(map);
 }
 
 void M_RenderVisiblePathableLayer(const struct map *map, const struct camera *cam, enum nav_layer layer)

@@ -121,7 +121,6 @@ static id<MTLTexture>            s_frame_depth_texture;
 static id<MTLTexture>            s_shadow_depth_texture;
 static id<MTLTexture>            s_shadow_owner_texture;
 static id<MTLTexture>            s_shadow_owner_dummy_texture;
-static id<MTLTexture>            s_team_mask_dummy_texture;
 static id<MTLTexture>            s_water_reflection_texture;
 static id<MTLTexture>            s_water_reflection_depth_texture;
 static id<MTLTexture>            s_water_refraction_texture;
@@ -943,7 +942,7 @@ static const char *s_static_mesh_shader_source =
 "    if(mode == 2u) return world_y < clip_params.z;\n"
 "    return false;\n"
 "}\n"
-"fragment float4 static_mesh_fragment(StaticMeshVertexOut in [[stage_in]], constant StaticMeshUniforms &uniforms [[buffer(1)]], device atomic_uint *shadow_probe [[buffer(2)]], constant uint4 &shadow_probe_params [[buffer(3)]], texture2d_array<float> material_textures [[texture(0)]], depth2d<float> shadow_map [[texture(1)]], texture2d<uint> shadow_owner_map [[texture(2)]], texture2d_array<float> team_masks [[texture(3)]], sampler material_sampler [[sampler(0)]], sampler shadow_sampler [[sampler(1)]]) {\n"
+"fragment float4 static_mesh_fragment(StaticMeshVertexOut in [[stage_in]], constant StaticMeshUniforms &uniforms [[buffer(1)]], device atomic_uint *shadow_probe [[buffer(2)]], constant uint4 &shadow_probe_params [[buffer(3)]], texture2d_array<float> material_textures [[texture(0)]], depth2d<float> shadow_map [[texture(1)]], texture2d<uint> shadow_owner_map [[texture(2)]], sampler material_sampler [[sampler(0)]], sampler shadow_sampler [[sampler(1)]]) {\n"
 "    if(clip_water_world_y(in.world_pos.y, uniforms.clip_params)) discard_fragment();\n"
 "    float3 normal = normalize(in.normal);\n"
 "    float3 light_vec = uniforms.light_pos.xyz - in.world_pos;\n"
@@ -958,13 +957,6 @@ static const char *s_static_mesh_shader_source =
 "        if(tex_rgba.a <= 0.5) discard_fragment();\n"
 "        if(uniforms.effect_params.y > 0.5) return float4(tex_rgba.xyz, tex_rgba.w);\n"
 "        tex_rgba.xyz *= tex_rgba.w;\n"
-"    }\n"
-"    if(uniforms.effect_params.w > 0.5 && uniforms.team_color.w > 0.5 && in.material_idx < uint(uniforms.effect_params.w + 0.5)) {\n"
-"        float4 mask_rgba = team_masks.sample(material_sampler, in.uv, in.material_idx, bias(-0.5));\n"
-"        float mask = clamp(max(max(mask_rgba.r, mask_rgba.g), mask_rgba.b), 0.0, 1.0);\n"
-"        float luma = dot(tex_rgba.xyz, float3(0.299, 0.587, 0.114));\n"
-"        float3 tinted = clamp(uniforms.team_color.xyz, 0.0, 1.0) * (0.35 + luma * 0.85);\n"
-"        tex_rgba.xyz = mix(tex_rgba.xyz, tinted, mask * 0.8);\n"
 "    }\n"
 "    float3 view_dir = normalize(uniforms.view_pos.xyz - in.world_pos);\n"
 "    float3 reflect_dir = reflect(-light_dir, specular_normal);\n"
@@ -1496,7 +1488,6 @@ static void release_scene_resources(void)
     s_shadow_depth_texture = nil;
     s_shadow_owner_texture = nil;
     s_shadow_owner_dummy_texture = nil;
-    s_team_mask_dummy_texture = nil;
     s_water_reflection_texture = nil;
     s_water_reflection_depth_texture = nil;
     s_water_refraction_texture = nil;
@@ -2219,35 +2210,6 @@ static bool ensure_shadow_owner_dummy_texture(void)
                                       withBytes:&zero
                                     bytesPerRow:sizeof(zero)];
     return true;
-}
-
-static id<MTLTexture> ensure_team_mask_dummy_texture(void)
-{
-    if(s_team_mask_dummy_texture)
-        return s_team_mask_dummy_texture;
-    if(!s_device)
-        return nil;
-
-    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                                                     width:1
-                                                                                    height:1
-                                                                                 mipmapped:NO];
-    desc.textureType = MTLTextureType2DArray;
-    desc.arrayLength = 1;
-    desc.storageMode = MTLStorageModeShared;
-    desc.usage = MTLTextureUsageShaderRead;
-    s_team_mask_dummy_texture = [s_device newTextureWithDescriptor:desc];
-    if(!s_team_mask_dummy_texture)
-        return nil;
-
-    unsigned char zero[4] = {0, 0, 0, 0};
-    [s_team_mask_dummy_texture replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
-                                 mipmapLevel:0
-                                       slice:0
-                                   withBytes:zero
-                                 bytesPerRow:sizeof(zero)
-                               bytesPerImage:sizeof(zero)];
-    return s_team_mask_dummy_texture;
 }
 
 static bool ensure_shadow_screen_probe_buffers(void)
@@ -5544,137 +5506,6 @@ static bool same_team_color(vec4_t a, vec4_t b)
         && fabsf(a.w - b.w) <= eps;
 }
 
-static void team_mask_texname_for(const char *texname, char *out, size_t out_size)
-{
-    if(!out || !out_size)
-        return;
-    out[0] = '\0';
-    if(!texname || !texname[0])
-        return;
-
-    char tmp[512];
-    snprintf(tmp, sizeof(tmp), "%s", texname);
-
-    char *slash = strrchr(tmp, '/');
-    char *base = slash ? slash + 1 : tmp;
-    char *dot = strrchr(base, '.');
-    if(dot)
-        *dot = '\0';
-
-    snprintf(out, out_size, "%s_team_mask.png", tmp);
-}
-
-static bool mask_has_coverage(const unsigned char *rgba, size_t npixels)
-{
-    if(!rgba)
-        return false;
-
-    for(size_t i = 0; i < npixels; i++) {
-        if(rgba[i * 4 + 0] > 5 || rgba[i * 4 + 1] > 5 || rgba[i * 4 + 2] > 5)
-            return true;
-    }
-    return false;
-}
-
-static id<MTLTexture> ensure_team_mask_texture_array(struct render_private *priv)
-{
-    if(!priv || !priv->num_materials || !s_device)
-        return nil;
-    if(priv->metal_team_mask_texture_array)
-        return (__bridge id<MTLTexture>)priv->metal_team_mask_texture_array;
-
-    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                                                     width:CONFIG_ARR_TEX_RES
-                                                                                    height:CONFIG_ARR_TEX_RES
-                                                                                 mipmapped:YES];
-    desc.textureType = MTLTextureType2DArray;
-    desc.arrayLength = priv->num_materials;
-    desc.usage = MTLTextureUsageShaderRead;
-
-    id<MTLTexture> texture = [s_device newTextureWithDescriptor:desc];
-    if(!texture)
-        return nil;
-
-    const size_t bytes_per_row = CONFIG_ARR_TEX_RES * 4;
-    const size_t bytes_per_image = bytes_per_row * CONFIG_ARR_TEX_RES;
-    const size_t npixels = CONFIG_ARR_TEX_RES * CONFIG_ARR_TEX_RES;
-    unsigned char *fallback = calloc(1, bytes_per_image);
-    unsigned char *resized = malloc(bytes_per_image);
-    if(!fallback || !resized) {
-        free(fallback);
-        free(resized);
-        return nil;
-    }
-
-    bool has_mask = false;
-    MTLRegion region = MTLRegionMake2D(0, 0, CONFIG_ARR_TEX_RES, CONFIG_ARR_TEX_RES);
-    for(size_t i = 0; i < priv->num_materials; i++) {
-        const struct material *mat = &priv->materials[i];
-        unsigned char *data = NULL;
-        int width = 0, height = 0, nr_channels = 0;
-
-        if(mat->texname[0]) {
-            char mask_name[512];
-            char primary_path[1024];
-            char secondary_path[1024];
-            team_mask_texname_for(mat->texname, mask_name, sizeof(mask_name));
-            if(mask_name[0]) {
-                if(priv->metal_asset_basedir[0]) {
-                    snprintf(primary_path, sizeof(primary_path), "%s/%s", priv->metal_asset_basedir, mask_name);
-                } else {
-                    snprintf(primary_path, sizeof(primary_path), "%s", mask_name);
-                }
-                snprintf(secondary_path, sizeof(secondary_path), "%s/%s", g_basepath, mask_name);
-                data = stbi_load(primary_path, &width, &height, &nr_channels, 4);
-                if(!data)
-                    data = stbi_load(secondary_path, &width, &height, &nr_channels, 4);
-            }
-        }
-
-        const unsigned char *upload = fallback;
-        if(data) {
-            if(width == CONFIG_ARR_TEX_RES && height == CONFIG_ARR_TEX_RES) {
-                upload = data;
-            } else if(stbir_resize_uint8(data, width, height, 0,
-                                         resized, CONFIG_ARR_TEX_RES, CONFIG_ARR_TEX_RES, 0, 4)) {
-                upload = resized;
-            }
-        }
-
-        if(upload != fallback && mask_has_coverage(upload, npixels))
-            has_mask = true;
-
-        [texture replaceRegion:region
-                   mipmapLevel:0
-                         slice:i
-                     withBytes:upload
-                   bytesPerRow:bytes_per_row
-                 bytesPerImage:bytes_per_image];
-        stbi_image_free(data);
-    }
-
-    free(fallback);
-    free(resized);
-
-    if(s_queue && texture.mipmapLevelCount > 1) {
-        id<MTLCommandBuffer> command_buffer = [s_queue commandBuffer];
-        if(command_buffer) {
-            id<MTLBlitCommandEncoder> blit = [command_buffer blitCommandEncoder];
-            if(blit) {
-                [blit generateMipmapsForTexture:texture];
-                [blit endEncoding];
-                [command_buffer commit];
-                [command_buffer waitUntilCompleted];
-            }
-        }
-    }
-
-    priv->metal_team_mask_texture_array = (__bridge_retained void *)texture;
-    priv->metal_team_mask_texture_count = has_mask ? priv->num_materials : 0;
-    priv->metal_team_masks_available = has_mask;
-    return texture;
-}
-
 static id<MTLTexture> ensure_material_texture_array(struct render_private *priv)
 {
     if(!priv || !priv->num_materials || !s_device)
@@ -5806,7 +5637,6 @@ static void render_static_vertex_stream(const struct render_private *priv,
         return;
 
     id<MTLTexture> texture_array = ensure_material_texture_array(mutable_priv);
-    id<MTLTexture> team_mask_array = ensure_team_mask_texture_array(mutable_priv);
     id<MTLBuffer> vertex_buffer = [s_device newBufferWithBytes:verts
         length:verts_size options:MTLResourceStorageModeShared];
     if(!vertex_buffer)
@@ -5826,9 +5656,9 @@ static void render_static_vertex_stream(const struct render_private *priv,
             (float)mutable_priv->metal_material_texture_count,
             raw_material_debug_enabled() ? 1.0f : 0.0f,
             (priv->uses_pose_buffer || mutable_priv->metal_materials_have_cutout_alpha) ? 1.0f : 0.0f,
-            (team_color.w > 0.5f) ? (float)mutable_priv->metal_team_mask_texture_count : 0.0f,
+            0.0f,
         },
-        .team_color = team_color,
+        .team_color = disabled_team_color(),
         .shadow_params = {
             shadow_enabled_for_draw() ? 1.0f : 0.0f,
             0.002f,
@@ -5861,9 +5691,6 @@ static void render_static_vertex_stream(const struct render_private *priv,
         [encoder setFragmentTexture:texture_array atIndex:0];
         [encoder setFragmentSamplerState:s_material_sampler atIndex:0];
     }
-    id<MTLTexture> bound_team_mask = team_mask_array ? team_mask_array : ensure_team_mask_dummy_texture();
-    if(bound_team_mask)
-        [encoder setFragmentTexture:bound_team_mask atIndex:3];
     if(shadow_enabled_for_draw()) {
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
@@ -5898,7 +5725,6 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
         return;
 
     id<MTLTexture> texture_array = ensure_material_texture_array(mutable_priv);
-    id<MTLTexture> team_mask_array = ensure_team_mask_texture_array(mutable_priv);
     id<MTLBuffer> vertex_buffer = ensure_persistent_vertex_buffer(
         &mutable_priv->metal_static_vertex_buffer,
         priv->metal_static_verts,
@@ -5920,9 +5746,9 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
             (float)mutable_priv->metal_material_texture_count,
             raw_material_debug_enabled() ? 1.0f : 0.0f,
             mutable_priv->metal_materials_have_cutout_alpha ? 1.0f : 0.0f,
-            (team_color.w > 0.5f) ? (float)mutable_priv->metal_team_mask_texture_count : 0.0f,
+            0.0f,
         },
-        .team_color = team_color,
+        .team_color = disabled_team_color(),
         .shadow_params = {
             shadow_enabled_for_draw() ? 1.0f : 0.0f,
             0.002f,
@@ -5955,9 +5781,6 @@ static void render_static_mesh_draw(const struct render_private *priv, const mat
         [encoder setFragmentTexture:texture_array atIndex:0];
         [encoder setFragmentSamplerState:s_material_sampler atIndex:0];
     }
-    id<MTLTexture> bound_team_mask = team_mask_array ? team_mask_array : ensure_team_mask_dummy_texture();
-    if(bound_team_mask)
-        [encoder setFragmentTexture:bound_team_mask atIndex:3];
     if(shadow_enabled_for_draw()) {
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];
@@ -6031,7 +5854,7 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
         return false;
 
     struct render_private *mutable_priv = (struct render_private *)priv;
-    vector_float4 team_color = team_color_from_rstate(team_color_src);
+    vector_float4 team_color = disabled_team_color();
     if(!(s_water_scene_pass_active && s_water_scene_encoder))
         frame_begin();
     id<MTLRenderCommandEncoder> encoder = active_scene_encoder();
@@ -6079,7 +5902,6 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
     }
 
     id<MTLTexture> texture_array = ensure_material_texture_array(mutable_priv);
-    id<MTLTexture> team_mask_array = ensure_team_mask_texture_array(mutable_priv);
     id<MTLBuffer> vertex_buffer = ensure_persistent_vertex_buffer(
         &mutable_priv->metal_anim_vertex_buffer,
         priv->metal_anim_verts,
@@ -6112,7 +5934,7 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
             (float)mutable_priv->metal_material_texture_count,
             raw_material_debug_enabled() ? 1.0f : 0.0f,
             1.0f,
-            (team_color.w > 0.5f) ? (float)mutable_priv->metal_team_mask_texture_count : 0.0f,
+            0.0f,
         },
         .team_color = team_color,
         .shadow_params = {
@@ -6150,9 +5972,6 @@ static bool render_gpu_skinned_anim_batch(vec_ranim_t *ents, size_t nents, int s
         [encoder setFragmentTexture:texture_array atIndex:0];
         [encoder setFragmentSamplerState:s_material_sampler atIndex:0];
     }
-    id<MTLTexture> bound_team_mask = team_mask_array ? team_mask_array : ensure_team_mask_dummy_texture();
-    if(bound_team_mask)
-        [encoder setFragmentTexture:bound_team_mask atIndex:3];
     if(shadow_enabled_for_draw()) {
         [encoder setFragmentTexture:s_shadow_depth_texture atIndex:1];
         [encoder setFragmentSamplerState:s_shadow_sampler atIndex:1];

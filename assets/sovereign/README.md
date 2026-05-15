@@ -46,27 +46,15 @@ Every production unit must have readability metadata in
 - a far-view silhouette class
 - a minimum pixel target for wide zoom
 - a marker policy for when healthbars or other UI indicators may appear
-- a team-color strategy
+- an explicit world-material team-color policy
 
-The preferred production team-color strategy is a texture mask stored beside
-the unit texture and referenced by the unit's `readability.team_color.mask`
-field. Current placeholder assets may use `pending_mask`, but that is not
-production-ready.
+World materials do not use a dynamic team-color tint path. OpenGL has no
+equivalent mask shader, so Metal also keeps this disabled for parity. Strong
+team identity belongs on the minimap and other deliberate UI surfaces; world
+unit readability should come from authored silhouettes, animation, equipment,
+small built-in costume accents, and compact health/status UI.
 
-The first proof mask is `assets/models/knight/Knight_team_mask.png`, used by
-the placeholder Sovereign `militia` entry. It covers the existing Knight
-texture's blue shield and cloth/paint regions and is meant as a pipeline proof,
-not final Sovereign infantry art.
-
-The current placeholder pack also includes:
-
-- `assets/models/mage/Mage_team_mask.png` for the placeholder `archer`, covering
-  the Mage texture's purple garment and cape regions.
-- `assets/models/cart/cart_team_mask.png` for the placeholder `villager`,
-  covering only small strap/banner accents. It intentionally avoids a broad
-  `wood.jpg` tint because that makes the main-world material read like UI
-  paint, which is not the AoE-style direction.
-
-The current strict gate requires every required unit to have a subtle authored
-accent mask. Final Sovereign unit art should replace the placeholder
-Knight/Mage/cart assets with purpose-built team-color regions.
+The historical mask proof assets may remain in the tree while older notes are
+kept for auditability, but they are not part of the active renderer contract.
+Final Sovereign unit art should replace the placeholder Knight/Mage/cart assets
+with purpose-built models and textures that are readable without runtime tinting.

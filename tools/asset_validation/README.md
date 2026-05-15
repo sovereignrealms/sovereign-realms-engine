@@ -32,12 +32,13 @@ python3 tools/asset_validation/validate_sovereign_readability.py
 ```
 
 The readability gate checks that every unit has a far-view silhouette class,
-minimum pixel target, marker policy, and team-color strategy. Current
-placeholder units are allowed to report `pending_mask` in the normal gate so
-gameplay probes can continue to run while production art is incomplete.
+minimum pixel target, marker policy, and explicit world-material team-color
+policy. The active parity rule is `not_applicable`: world unit materials do not
+receive dynamic team-color tinting because the OpenGL reference renderer has no
+matching shader path.
 
-Use `--strict` when a production asset pack is expected to have real texture
-masks instead of pending placeholders:
+Use `--strict` when a production asset pack should have no incomplete
+readability placeholders:
 
 ```sh
 python3 tools/asset_validation/validate_sovereign_readability.py --strict
@@ -51,4 +52,6 @@ python3 tools/asset_validation/validate_sovereign_readability.py --unit militia 
 
 The current placeholder Sovereign unit pack is expected to pass full strict
 validation. New unit entries should not land with `pending_mask` unless the
-plan explicitly marks them as non-production placeholders.
+plan explicitly marks them as non-production placeholders. Strong team colors
+remain a minimap/UI concern; world readability should come from authored
+silhouettes, animation, equipment, and compact status UI.
