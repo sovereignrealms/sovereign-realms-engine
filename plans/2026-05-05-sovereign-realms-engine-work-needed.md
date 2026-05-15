@@ -8625,3 +8625,96 @@ Next:
 - Move from probe-level dressing to production readability content: real unit
   silhouettes/animation clarity, production terrain/biome art direction, and
   map-authoring rules for clean edges at wide zoom.
+
+## Completed Slice 99 — Unit Silhouette And Animation Readability Gate
+
+Goal:
+
+- Add a stricter proof for close-zoom and wide-zoom unit readability without
+  changing the renderer into a broad team-tint path.
+- Keep player selection rings neutral white and thin.
+- Use the current placeholder Sovereign units as proof subjects while making
+  their production-art gaps explicit.
+
+Implementation:
+
+- Extended `scripts/sovereign/data/readability.py` with close-view metadata
+  validation and production-asset status reporting.
+- Added close-view readability rules to `scripts/sovereign/data/units.py` for
+  the current villager/cart, militia/Knight, and archer/Mage placeholders.
+- Extended `scripts/macos/pf_metal_hd_world_readability_probe.py` with four
+  unit-focused proof scenes:
+  - `close_unit_idle_pose_readability`
+  - `close_unit_walk_pose_readability`
+  - `close_unit_attack_pose_readability`
+  - `wide_unit_silhouette_readability`
+- Staged the Sovereign proof units through the data-driven entity factory,
+  isolated them from the generic hero group, and recorded per-scene pose state
+  in the summary JSON.
+- Kept world materials free of dynamic team-color tinting; the proof relies on
+  silhouettes, animations, neutral selection rings, and compact healthbar rules.
+
+Verification:
+
+```sh
+python3 -m py_compile \
+  scripts/macos/pf_metal_hd_world_readability_probe.py \
+  scripts/sovereign/data/readability.py \
+  scripts/sovereign/data/units.py
+
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+git diff --check
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_metal_hd_world_readability_probe.py \
+  --output-dir visual_parity_captures/2026-05-15-unit-silhouette-readability-proof \
+  --expect-backend METAL
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=OPENGL
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `HD_WORLD_READABILITY_PASS backend=METAL captures=15 highdpi=1 staged=126`.
+- Proof output:
+  `visual_parity_captures/2026-05-15-unit-silhouette-readability-proof/`.
+- Retina capture scale: `[2.0, 2.0]`.
+- Staged counts:
+  - `heroes=6`
+  - `sovereign_units=3`
+  - `edge_dressing=15`
+  - `terrain_updates=2257`
+- Close unit proof:
+  - idle: `edge_density=0.092337`, `gradient_p95=24`,
+    pose counts `archer:Idle`, `militia:Idle`, `villager:static`
+  - walk: `edge_density=0.092635`, `gradient_p95=24`,
+    pose counts `archer:Walk`, `militia:Walk`, `villager:static`
+  - attack: `edge_density=0.093240`, `gradient_p95=25`,
+    pose counts `archer:Attack`, `militia:Attack`, `villager:static`
+- Wide unit silhouette proof:
+  - `edge_density=0.147560`, `gradient_p95=32`
+- Asset readability summary:
+  - `units_needing_production_assets=3`
+  - `production_asset_statuses={"placeholder_needs_replacement": 3}`
+  - `pending_team_masks=0`
+- Key visual proof captures:
+  - `metal_hd_world_close_unit_attack_pose_readability_crop.png`
+  - `metal_hd_world_wide_unit_silhouette_readability.png`
+
+Conclusion:
+
+- The HD readability harness now has a focused unit silhouette and animation
+  gate for idle, walk, attack, and wide-zoom visibility.
+- This is not final HD/4K character art. It makes the current placeholder
+  model problem explicit and measurable before production assets are swapped in.
+- The villager/cart placeholder remains static in walk/attack proof scenes
+  because it is not a real animated villager asset.
+
+Next:
+
+- Replace placeholder unit art with production-readable silhouettes and
+  animations: real villager/worker, infantry, ranged unit, and siege/animal
+  silhouettes before deeper HD/4K character polish.

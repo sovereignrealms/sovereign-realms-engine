@@ -6,6 +6,7 @@ from sovereign.data.units import UNITS
 
 
 TEAM_COLOR_MODES = ("texture_mask", "pending_mask", "not_applicable")
+PRODUCTION_ASSET_STATUSES = ("production_ready", "placeholder_needs_replacement")
 DEFAULT_TEAM_COLOR_MASK_MAX_COVERAGE = 0.35
 
 
@@ -244,6 +245,28 @@ def _validate_unit(unit_id, unit, basedir):
     if not isinstance(minimum_pixels, int) or minimum_pixels <= 0:
         errors.append("unit '{0}' has invalid far-view minimum_pixels".format(unit_id))
 
+    close_view = readability.get("close_view") or {}
+    preferred_height = close_view.get("preferred_camera_height")
+    if not (
+        isinstance(preferred_height, (list, tuple))
+        and len(preferred_height) == 2
+        and all(isinstance(value, (int, float)) for value in preferred_height)
+        and preferred_height[0] > 0
+        and preferred_height[0] < preferred_height[1]
+    ):
+        errors.append("unit '{0}' has invalid close-view preferred_camera_height".format(unit_id))
+    proof_poses = close_view.get("proof_poses")
+    if not isinstance(proof_poses, (list, tuple)) or not proof_poses:
+        errors.append("unit '{0}' is missing close-view proof poses".format(unit_id))
+    minimum_close_pixels = close_view.get("minimum_pixels")
+    if not isinstance(minimum_close_pixels, int) or minimum_close_pixels <= 0:
+        errors.append("unit '{0}' has invalid close-view minimum_pixels".format(unit_id))
+
+    production_asset = readability.get("production_asset") or {}
+    asset_status = production_asset.get("status")
+    if asset_status not in PRODUCTION_ASSET_STATUSES:
+        errors.append("unit '{0}' has invalid production asset status".format(unit_id))
+
     team_color = readability.get("team_color") or {}
     mode = team_color.get("mode")
     if mode not in TEAM_COLOR_MODES:
@@ -321,11 +344,15 @@ def summarize_unit_readability(units=None, basedir="."):
     pending_team_masks = 0
     silhouettes = {}
     far_view_classes = {}
+    close_view_classes = {}
+    production_asset_statuses = {}
     units_out = {}
     for unit_id in sorted(units):
         readability = units[unit_id].get("readability") or {}
         team_color = readability.get("team_color") or {}
         far_view = readability.get("far_view") or {}
+        close_view = readability.get("close_view") or {}
+        production_asset = readability.get("production_asset") or {}
         mode = team_color.get("mode")
         if mode in ("texture_mask", "not_applicable"):
             production_ready += 1
@@ -333,13 +360,23 @@ def summarize_unit_readability(units=None, basedir="."):
             pending_team_masks += 1
         silhouette = readability.get("silhouette", "missing")
         far_class = far_view.get("class", "missing")
+        close_class = close_view.get("class", "missing")
+        asset_status = production_asset.get("status", "missing")
         silhouettes[silhouette] = silhouettes.get(silhouette, 0) + 1
         far_view_classes[far_class] = far_view_classes.get(far_class, 0) + 1
+        close_view_classes[close_class] = close_view_classes.get(close_class, 0) + 1
+        production_asset_statuses[asset_status] = production_asset_statuses.get(asset_status, 0) + 1
         units_out[unit_id] = {
             "silhouette": silhouette,
             "far_view_class": far_class,
             "minimum_pixels": far_view.get("minimum_pixels"),
             "marker_policy": far_view.get("marker_policy"),
+            "close_view_class": close_class,
+            "close_view_preferred_camera_height": close_view.get("preferred_camera_height"),
+            "close_view_minimum_pixels": close_view.get("minimum_pixels"),
+            "close_view_proof_poses": close_view.get("proof_poses"),
+            "production_asset_status": asset_status,
+            "production_asset_notes": production_asset.get("notes"),
             "team_color_mode": mode,
             "team_color_mask": team_color.get("mask"),
             "team_color_mask_size": _unit_mask_dimensions(
@@ -362,6 +399,11 @@ def summarize_unit_readability(units=None, basedir="."):
         "pending_team_masks": pending_team_masks,
         "silhouettes": silhouettes,
         "far_view_classes": far_view_classes,
+        "close_view_classes": close_view_classes,
+        "production_asset_statuses": production_asset_statuses,
+        "units_needing_production_assets": production_asset_statuses.get(
+            "placeholder_needs_replacement", 0
+        ),
         "errors": validation["errors"],
         "warnings": validation["warnings"],
     }

@@ -14,6 +14,8 @@ sys.path.insert(0, pf.get_basedir() + "/scripts")
 import rts.globals
 import rts.main as demo_main
 from sovereign.data.readability import summarize_unit_readability
+from sovereign.data.units import UNITS
+from sovereign.entities.runtime import create_entity, place_entity
 from rts.units.berzerker import Berzerker
 from rts.units.goblin import Goblin
 from rts.units.knight import Knight
@@ -29,6 +31,10 @@ WIDE_HEALTHBAR_POLICY_HEIGHT = 520.0
 METRIC_CROP_RATIOS = {
     "close_character_lod_target": 0.42,
     "close_character_status_readability": 0.42,
+    "close_unit_idle_pose_readability": 0.42,
+    "close_unit_walk_pose_readability": 0.42,
+    "close_unit_attack_pose_readability": 0.42,
+    "wide_unit_silhouette_readability": 0.54,
     "dense_army_readability": 0.58,
     "dense_forest_building_readability": 0.58,
     "vfx_combat_readability": 0.52,
@@ -67,6 +73,51 @@ SCENES = (
         "fog_of_war": False,
         "selection": "heroes",
         "healthbars": True,
+    },
+    {
+        "name": "close_unit_idle_pose_readability",
+        "target": "sovereign_unit_cluster",
+        "height": 72.0,
+        "pitch": -55.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "sovereign_units",
+        "healthbars": False,
+        "unit_pose": "Idle",
+    },
+    {
+        "name": "close_unit_walk_pose_readability",
+        "target": "sovereign_unit_cluster",
+        "height": 72.0,
+        "pitch": -55.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "sovereign_units",
+        "healthbars": False,
+        "unit_pose": "Walk",
+    },
+    {
+        "name": "close_unit_attack_pose_readability",
+        "target": "sovereign_unit_cluster",
+        "height": 72.0,
+        "pitch": -55.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": "sovereign_units",
+        "healthbars": False,
+        "unit_pose": "Attack",
+    },
+    {
+        "name": "wide_unit_silhouette_readability",
+        "target": "sovereign_unit_cluster",
+        "height": 900.0,
+        "pitch": -67.0,
+        "yaw": 135.0,
+        "fog_of_war": False,
+        "selection": None,
+        "healthbars": False,
+        "unit_pose": "Idle",
+        "unit_focus": True,
     },
     {
         "name": "dense_army_readability",
@@ -173,6 +224,7 @@ STATE = {
     "scene_index": 0,
     "targets": {},
     "entities": [],
+    "sovereign_units": [],
     "heroes": [],
     "army": [],
     "combat": [],
@@ -456,6 +508,9 @@ def _capture(scene):
             "expected_bar_sources": _expected_healthbar_sources(scene),
         },
         "boundary_focus": bool(scene.get("boundary_focus", False)),
+        "unit_focus": bool(scene.get("unit_focus", False)),
+        "unit_pose": scene.get("unit_pose"),
+        "unit_pose_state": _unit_pose_state(),
         "readability_metrics": metrics,
     }
     STATE["captures"].append(record)
@@ -489,6 +544,59 @@ def _read_sprite_stats():
                     sheets[sheet] = sheets.get(sheet, 0) + 1
                     break
     return sheets
+
+
+def _safe_anim(ent):
+    try:
+        return ent.get_anim()
+    except Exception:
+        return None
+
+
+def _unit_pose_state():
+    counts = {}
+    units = []
+    for ent in STATE["sovereign_units"]:
+        unit_id = getattr(ent, "sovereign_unit_id", None) or "unknown"
+        anim = _safe_anim(ent)
+        key = "{0}:{1}".format(unit_id, anim or "static")
+        counts[key] = counts.get(key, 0) + 1
+        units.append({
+            "unit_id": unit_id,
+            "name": getattr(ent, "name", None),
+            "anim": anim,
+            "position": [
+                round(float(ent.pos[0]), 3),
+                round(float(ent.pos[1]), 3),
+                round(float(ent.pos[2]), 3),
+            ],
+        })
+    return {
+        "counts": counts,
+        "units": units,
+    }
+
+
+def _set_unit_pose(scene):
+    pose = scene.get("unit_pose")
+    if not pose:
+        return
+    target = STATE["targets"].get(scene["target"], STATE["targets"]["sovereign_unit_cluster"])
+    look_at = (target[0] + 16.0, _height(target), target[1] - 16.0)
+    for idx, ent in enumerate(STATE["sovereign_units"]):
+        try:
+            ent.face_towards(look_at)
+        except Exception:
+            pass
+        anim = pose
+        if pose == "Attack" and getattr(ent, "sovereign_unit_id", None) == "villager":
+            anim = "Idle"
+        if pose == "Walk" and getattr(ent, "sovereign_unit_id", None) == "villager":
+            anim = "Idle"
+        try:
+            ent.play_anim(anim)
+        except Exception:
+            pass
 
 
 def _capture_by_name(name):
@@ -531,6 +639,9 @@ def _write_summary(status, reason=None):
     rule_deltas = []
     for before_name, after_name in (
         ("close_character_lod_target", "close_character_status_readability"),
+        ("close_unit_idle_pose_readability", "close_unit_walk_pose_readability"),
+        ("close_unit_idle_pose_readability", "close_unit_attack_pose_readability"),
+        ("close_unit_idle_pose_readability", "wide_unit_silhouette_readability"),
         ("wide_large_map_readability", "wide_army_status_readability"),
         ("wide_army_no_status_readability", "wide_army_damaged_status_readability"),
         ("wide_army_no_status_readability", "wide_army_selected_status_readability"),
@@ -548,6 +659,7 @@ def _write_summary(status, reason=None):
         "targets": STATE["targets"],
         "staged_counts": {
             "entities": len(STATE["entities"]),
+            "sovereign_units": len(STATE["sovereign_units"]),
             "heroes": len(STATE["heroes"]),
             "army": len(STATE["army"]),
             "combat": len(STATE["combat"]),
@@ -559,6 +671,7 @@ def _write_summary(status, reason=None):
         "captures": STATE["captures"],
         "readability_contract": {
             "close_zoom": "center-crop detail metrics and crop image for character-level visual review",
+            "unit_pose_proof": "close captures explicitly stage idle, walk, and attack poses for current Sovereign placeholder units",
             "wide_zoom": "large center-crop detail metrics and crop image for army/map readability review",
             "selection_markers": "player-owned selected units keep neutral white thin rings for unobtrusive readability",
             "healthbars": "healthbars shrink as camera height increases so wide views are not dominated by bars",
@@ -570,6 +683,15 @@ def _write_summary(status, reason=None):
         },
         "readability_rule_deltas": rule_deltas,
         "asset_readability": summarize_unit_readability(basedir=pf.get_basedir()),
+        "unit_pose_proof": {
+            "unit_ids": [getattr(ent, "sovereign_unit_id", None) for ent in STATE["sovereign_units"]],
+            "scenes": [
+                record["name"]
+                for record in STATE["captures"]
+                if record.get("unit_pose") or record.get("unit_focus")
+            ],
+            "note": "current villager/cart, militia/Knight, and archer/Mage assets are placeholder proof subjects, not final HD/4K unit art",
+        },
         "current_limitations": [
             "stock low-poly character meshes are readable but not HD/4K close-zoom quality",
             "far-view silhouettes and subtle authored unit accents are still production-asset work",
@@ -792,6 +914,33 @@ def _stage_characters():
         STATE["heroes"].append(_make_unit(kind, "hd_probe_hero_{0}_{1}".format(kind, idx), point, 1))
 
 
+def _stage_sovereign_units():
+    center = STATE["targets"]["sovereign_unit_cluster"]
+    unit_ids = ("villager", "militia", "archer")
+    offsets = ((-7.0, -2.5), (0.0, 2.5), (7.0, -2.5))
+    for idx, (unit_id, offset) in enumerate(zip(unit_ids, offsets)):
+        definition = UNITS[unit_id]
+        entry = {
+            "kind": "unit",
+            "id": unit_id,
+            "name": "hd_probe_sovereign_{0}".format(unit_id),
+            "definition": definition,
+        }
+        ent = create_entity(entry)
+        point = _pathable_near((center[0] + offset[0], center[1] + offset[1]))
+        place_entity(
+            ent,
+            point,
+            faction_id=1,
+            radius=definition.get("selection_radius", 2.5),
+            scale=definition.get("scale"),
+            selectable=True,
+        )
+        STATE["entities"].append(ent)
+        STATE["sovereign_units"].append(ent)
+        rts.globals.scene_objs.append(ent)
+
+
 def _stage_army():
     center = STATE["targets"]["army_cluster"]
     friendly_points = _grid((center[0] - 22.0, center[1] + 4.0), 4, 6, 6.0)
@@ -936,6 +1085,7 @@ def _setup_targets():
     edge = _scan_map_edge(wide_world, (-1.0, 0.0))
     STATE["targets"] = {
         "character_cluster": (56.0, -84.0),
+        "sovereign_unit_cluster": (132.0, -198.0),
         "army_cluster": (28.0, -126.0),
         "forest_cluster": (-116.0, -294.0),
         "vfx_cluster": (72.0, -92.0),
@@ -963,6 +1113,8 @@ def _selection_for(scene):
         return []
     if key == "heroes":
         return STATE["heroes"]
+    if key == "sovereign_units":
+        return STATE["sovereign_units"]
     if key == "army":
         return STATE["army"][:36]
     if key == "friendly_army":
@@ -1004,6 +1156,7 @@ def _place_camera(scene):
         pf.disable_fog_of_war()
     selection = _selection_for(scene)
     pf.set_unit_selection(selection)
+    _set_unit_pose(scene)
     if scene.get("healthbars", False):
         pf.show_healthbars()
     else:
@@ -1034,6 +1187,7 @@ def _stage_probe():
     STATE["window_resolution"] = list(pf.get_resolution())
     _setup_camera()
     _stage_characters()
+    _stage_sovereign_units()
     _stage_army()
     _damage_far_view_units()
     _stage_edge_dressing()
