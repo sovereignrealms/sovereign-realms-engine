@@ -8832,3 +8832,43 @@ Next:
 
 - Use the preview probe as the gate for the first real villager/worker model,
   then repeat for melee infantry and ranged infantry.
+
+## Completed Slice 102 — Sovereign MIT Asset Provenance Gate
+
+Goal:
+
+- Make the new-asset license separation enforceable before adding generated or
+  commissioned Sovereign production art.
+- Keep new Sovereign-created assets MIT by default while preserving a clear
+  boundary from inherited Permafrost, Glest, GPL, LGPL, or other third-party
+  assets.
+
+Implementation:
+
+- Added `assets/sovereign/LICENSES/manifest.json` as the required provenance
+  manifest for Sovereign asset files.
+- Added `assets/sovereign/LICENSES/README.md` with the manifest contract.
+- Added `tools/asset_validation/validate_sovereign_asset_licenses.py`.
+- The validator checks:
+  - manifest presence and schema version
+  - default license is `MIT`
+  - each asset record has path, name, type, author, source, intake date,
+    license, and third-party-base metadata
+  - every file under `assets/sovereign/`, excluding license/docs files, has a
+    manifest record
+  - Sovereign-created asset records use `MIT`
+- Added the existing Sovereign two-player scenario sidecar to the manifest as
+  original MIT Sovereign content.
+- Updated asset, license-structure, readability, and validation docs.
+
+Verification:
+
+```sh
+python3 -m py_compile tools/asset_validation/validate_sovereign_asset_licenses.py
+python3 tools/asset_validation/validate_sovereign_asset_licenses.py --strict
+```
+
+Next:
+
+- Use this license gate before adding the first real MIT villager/worker asset
+  pack.

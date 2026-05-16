@@ -7,3 +7,4 @@
 - For Metal visual parity captures, keep staged water-edge units and rocks/static props in the evidence loop; do not judge water or mesh parity from empty scenery-only screenshots.
 - Keep player selection rings neutral white and thin; do not make them saturated team-colored or thick for readability. Wide-zoom readability should come from small zoom-scaled healthbars, silhouettes, LOD/icon rules, and subtle asset-side accents.
 - Follow AoE-style team readability: minimap markers may use strong faction colors, but main-world materials should not be broadly tinted. Only small authored accents such as shields, banners, cloth trim, flags, or building trim should use team-color masks.
+- New Sovereign-created assets should default to MIT license and live under clearly separated Sovereign asset/world-pack folders with source, author, and license metadata. Do not mix new MIT assets with inherited Permafrost/third-party assets without explicit provenance.

@@ -69,6 +69,8 @@ License files and notices:
 - `CHANGES.md`: dated Sovereign modification history.
 - `assets/sovereign/README.md`: original Sovereign asset/source/license
   tracking policy.
+- `assets/sovereign/LICENSES/manifest.json`: required provenance manifest for
+  every file under `assets/sovereign/`, excluding the license docs themselves.
 - `games/<pack>/LICENSE`: license for each contributed world or game pack.
 - `games/<pack>/world.json`: pack metadata, including license identifier and
   pack boundaries.
@@ -80,7 +82,8 @@ Rules for this fork:
 - Keep this notice file and `CHANGES.md` current.
 - Mark Sovereign Realms modifications clearly.
 - Keep original assets under `assets/sovereign/` with their own source/license
-  records.
+  records. New Sovereign-created assets default to MIT and must stay clearly
+  separated from inherited Permafrost or third-party assets.
 - Keep community worlds and game packs under `games/`, each with a local
   `LICENSE` and metadata.
 - Do not import proprietary Age of Empires assets.
@@ -89,6 +92,8 @@ World/game pack policy:
 
 - Engine/core code remains under the root engine license.
 - Engine/editor/runtime API changes remain under the root engine license.
+- New assets created specifically for Sovereign Realms should use MIT by
+  default and carry explicit source, author, date, and license metadata.
 - World packs loaded as data/scripts through the public runtime conventions may
   use their own license, including MIT, CC-BY, CC0, or another compatible
   content license chosen by the contributor.

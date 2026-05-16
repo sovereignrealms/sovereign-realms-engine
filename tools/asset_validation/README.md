@@ -2,6 +2,19 @@
 
 These tools are the first gate for Sovereign Realms art and gameplay assets.
 
+## Sovereign Asset License Validation
+
+Validate that every file under `assets/sovereign/` has a provenance record in
+`assets/sovereign/LICENSES/manifest.json`:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_asset_licenses.py --strict
+```
+
+New Sovereign-created assets default to MIT. The validator checks that each
+asset path exists, has source/author/date/license metadata, and does not enter
+the Sovereign asset tree without a manifest record.
+
 ## PFOBJ Validation
 
 Validate a single model:
