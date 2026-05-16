@@ -108,6 +108,14 @@ Current proof command:
   --expect-backend METAL
 ```
 
+Focused unit intake preview:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_unit_preview_probe.py \
+  --unit militia \
+  --output-dir qa-output/unit-preview-militia
+```
+
 Metadata validation:
 
 ```sh

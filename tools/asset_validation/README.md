@@ -57,3 +57,14 @@ only after the close/wide proof captures are visually readable.
 Strong team colors remain a minimap/UI concern; world readability should come
 from authored silhouettes, animation, equipment, and compact status UI. See
 `docs/sovereign/unit_art_readability.md` for the production unit art checklist.
+
+## Sovereign Unit Preview Probe
+
+Preview a Sovereign unit inside the engine with close idle/walk/attack and wide
+silhouette captures:
+
+```sh
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_unit_preview_probe.py \
+  --unit militia \
+  --output-dir qa-output/unit-preview-militia
+```

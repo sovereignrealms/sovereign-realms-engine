@@ -8760,3 +8760,75 @@ Next:
 
 - Add a production unit preview/intake probe for one replacement unit type, then
   use it to bring in the first real villager/worker model when art is available.
+
+## Completed Slice 101 — Sovereign Unit Preview Intake Probe
+
+Goal:
+
+- Add a focused engine-side preview probe for unit asset intake.
+- Let a new or placeholder unit be checked at close idle/walk/attack and wide
+  silhouette views before it enters production gameplay.
+
+Implementation:
+
+- Added `scripts/macos/pf_sovereign_unit_preview_probe.py`.
+- The probe accepts one or more `--unit <id>` arguments, defaulting to all
+  Sovereign unit registry entries.
+- It spawns units through the normal Sovereign entity factory, records asset
+  paths, declared animations, PFOBJ animation sets, missing declared
+  animations, production asset status, and close/far readability metadata.
+- It captures four views per unit:
+  - `close_idle`
+  - `close_walk`
+  - `close_attack`
+  - `wide_silhouette`
+- It writes `summary_sovereign_unit_preview.json` beside the proof images.
+- Updated the asset validation README and unit art guide with the new probe
+  command.
+
+Verification:
+
+```sh
+python3 -m py_compile scripts/macos/pf_sovereign_unit_preview_probe.py
+python3 tools/asset_validation/validate_sovereign_readability.py --strict
+git diff --check
+
+make pf PLAT=MACOS_ARM64 MACOS_ARM64_BUILD_READY=1 RENDER_BACKEND=METAL
+
+./bin/pf-arm64 ./ ./scripts/macos/pf_sovereign_unit_preview_probe.py \
+  --output-dir qa-output/sovereign-unit-preview-current \
+  --expect-backend METAL
+```
+
+Observed:
+
+- Metal proof passed:
+  `SOVEREIGN_UNIT_PREVIEW_PASS backend=METAL units=archer,militia,villager captures=12`.
+- Proof output:
+  `qa-output/sovereign-unit-preview-current/`.
+- Retina capture scale: `[2.0, 2.0]`.
+- `archer`:
+  - available animations: `Attack`, `Die`, `Hit`, `Idle`, `Walk`
+  - missing declared animations: none
+  - production asset status: `placeholder_needs_replacement`
+- `militia`:
+  - available animations: `Attack`, `Damaged`, `Die`, `Idle`, `Walk`
+  - missing declared animations: none
+  - production asset status: `placeholder_needs_replacement`
+- `villager`:
+  - available animations: none
+  - missing declared animations: `Idle`, `Walk`, `Gather`, `Carry`, `Build`,
+    `Repair`, `Die`
+  - production asset status: `placeholder_needs_replacement`
+
+Conclusion:
+
+- The unit intake workflow can now produce visual proof and machine-readable
+  asset-readiness evidence per unit.
+- The current villager/cart placeholder is confirmed as the first production
+  replacement target because it has no character animation sets.
+
+Next:
+
+- Use the preview probe as the gate for the first real villager/worker model,
+  then repeat for melee infantry and ranged infantry.
