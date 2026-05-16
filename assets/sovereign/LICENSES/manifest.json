@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "default_license": "MIT",
+  "assets": [
+    {
+      "path": "assets/sovereign/scenarios/two_player_skirmish.json",
+      "name": "Two Player Skirmish Scenario Sidecar",
+      "type": "scenario",
+      "author": "Sovereign Realms contributors",
+      "source": "original",
+      "created_or_intake_date": "2026-05-06",
+      "license": "MIT",
+      "third_party_base": false,
+      "notes": "Original Sovereign scenario metadata sidecar for editor and skirmish probes."
+    }
+  ]
+}

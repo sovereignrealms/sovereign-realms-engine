@@ -78,6 +78,10 @@ Before a unit enters a production scenario:
 - Texture scale supports close-zoom Retina screenshots.
 - Far-view silhouette target is recorded in `scripts/sovereign/data/units.py`.
 - Source file, author, and license are recorded with the asset pack.
+- New Sovereign-created art defaults to MIT and is stored separately from
+  inherited Permafrost or third-party placeholder assets.
+- `assets/sovereign/LICENSES/manifest.json` includes a record for every
+  Sovereign asset file before intake.
 
 ## Texture And Material Rules
 
@@ -126,6 +130,10 @@ PFOBJ validation:
 
 ```sh
 python3 tools/asset_validation/validate_pfobj.py <path/to/unit.pfobj> --strict
+```
+
+```sh
+python3 tools/asset_validation/validate_sovereign_asset_licenses.py --strict
 ```
 
 ## First Replacement Order

@@ -4,6 +4,12 @@ This folder is reserved for original Sovereign Realms game assets. Every asset
 added here must include source and license metadata before it is used in a
 public build.
 
+New Sovereign-created assets added by this project should default to MIT
+license unless a later asset-specific decision says otherwise. Keep those MIT
+assets separate from inherited Permafrost, Glest, LGPL, GPL, or other
+third-party assets so downstream contributors can tell exactly which content is
+original Sovereign material and which content has external license terms.
+
 Recommended layout:
 
 ```text
@@ -37,6 +43,22 @@ PFSCENE.
 
 Do not place Microsoft, Ensemble Studios, or Age of Empires assets in this
 tree. Use original, commissioned, or clearly licensed assets only.
+
+For each production asset pack, include a nearby metadata file or entry under
+`LICENSES/manifest.json` that records:
+
+- asset name and path
+- author/source
+- creation or intake date
+- license identifier, defaulting to `MIT` for Sovereign-created assets
+- whether any third-party base material was used
+- proof command or capture path used for intake, when applicable
+
+Run this before accepting new Sovereign assets:
+
+```sh
+python3 tools/asset_validation/validate_sovereign_asset_licenses.py --strict
+```
 
 ## Unit Readability Requirements
 
